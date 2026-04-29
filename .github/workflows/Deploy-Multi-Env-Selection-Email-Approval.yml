@@ -1,4 +1,4 @@
-name: Deploy-Multi-Approval-MediLink
+name: Deploy-Multi-Env-Selection-Email-Approval-MediLink
 
 on:
   workflow_dispatch:
@@ -16,9 +16,9 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: us-central1
   SERVICE_NAME: medilink-app
-  LEAD_EMAIL: ${{ secrets.LEAD_EMAIL }}
-  MANAGER_EMAIL: ${{ secrets.MANAGER_EMAIL }}
-  TEAM_CC: ${{ secrets.TEAM_CC }}
+  LEAD_EMAIL: ${{ vars.LEAD_EMAIL }}
+  MANAGER_EMAIL: ${{ vars.MANAGER_EMAIL }}
+  TEAM_CC: ${{ vars.TEAM_CC }}
 
 jobs:
 
