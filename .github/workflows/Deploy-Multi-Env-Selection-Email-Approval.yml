@@ -57,52 +57,43 @@ jobs:
 
       - name: Prepare Variables
         id: vars
+        shell: bash
         run: |
-          set -e
+            set -e
 
-          echo "ENV INPUT: ${{ github.event.inputs.environment }}"
-          echo "PROJECT_ID: ${{ env.PROJECT_ID }}"
+            ENV_NAME="${{ github.event.inputs.environment }}"
+            SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
 
-          if [ -z "${{ env.PROJECT_ID }}" ]; then
-            echo "❌ ERROR: PROJECT_ID is empty. Check your GCP_PROJECT_ID secret."
-            exit 1
-          fi
+            if [ "$ENV_NAME" = "dev" ]; then
+                SERVICE_NAME="medilink-app-dev"
+                TAG="dev-$SHORT_SHA"
+                IMAGE_NAME="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/medilink-app-dev:$TAG"
 
-          ENV_NAME="${{ github.event.inputs.environment }}"
-          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+            elif [ "$ENV_NAME" = "test" ]; then
+                SERVICE_NAME="medilink-app-test"
+                TAG="test-$SHORT_SHA"
+                IMAGE_NAME="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/medilink-app-test:$TAG"
 
-          if [ "$ENV_NAME" = "dev" ]; then
-            SERVICE_NAME="medilink-app-dev"
-            TAG="dev-$SHORT_SHA"
-            IMAGE_NAME="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/medilink-app-dev:$TAG"
+            else
+                SERVICE_NAME="medilink-app-production"
+                TAG="prod-$SHORT_SHA"
+                IMAGE_NAME="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/medilink-app-production:$TAG"
+            fi
 
-          elif [ "$ENV_NAME" = "test" ]; then
-            SERVICE_NAME="medilink-app-test"
-            TAG="test-$SHORT_SHA"
-            IMAGE_NAME="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/medilink-app-test:$TAG"
+            echo "SERVICE_NAME=$SERVICE_NAME"
+            echo "IMAGE_NAME=$IMAGE_NAME"
 
-          else
-            SERVICE_NAME="medilink-app-production"
-            TAG="prod-$SHORT_SHA"
-            IMAGE_NAME="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/medilink-app-production:$TAG"
-          fi
+            # ✅ CRITICAL: export outputs properly
+            {
+                echo "env_name=$ENV_NAME"
+                echo "service_name=$SERVICE_NAME"
+                echo "image_name=$IMAGE_NAME"
+            } >> "$GITHUB_OUTPUT"
 
-          echo "✅ SERVICE_NAME=$SERVICE_NAME"
-          echo "✅ IMAGE_NAME=$IMAGE_NAME"
-
-          if [ -z "$IMAGE_NAME" ]; then
-            echo "❌ ERROR: IMAGE_NAME is empty"
-            exit 1
-          fi
-
-          echo "env_name=$ENV_NAME" >> $GITHUB_OUTPUT
-          echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
-          echo "image_name=$IMAGE_NAME" >> $GITHUB_OUTPUT
-
-      - name: Debug Deploy Values
+      - name: Verify Inputs (Deploy Job)
         run: |
-          echo "SERVICE: ${{ needs.build.outputs.service_name }}"
-          echo "IMAGE: ${{ needs.build.outputs.image_name }}"
+            echo "Build Output Service: ${{ steps.vars.outputs.service_name }}"
+            echo "Build Output Image: ${{ steps.vars.outputs.image_name }}"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -203,7 +194,7 @@ jobs:
             --allow-unauthenticated \
             --port 8080 \
             --timeout 300
-            
+
       - name: Get Service URL
         id: url
         run: |
