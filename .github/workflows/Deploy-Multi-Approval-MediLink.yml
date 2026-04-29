@@ -207,18 +207,6 @@ jobs:
               
               <br>
 
-              <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                 style="
-                   background:#198754;
-                   color:white;
-                   padding:14px 22px;
-                   text-decoration:none;
-                   border-radius:6px;
-                   font-weight:bold;
-                   display:inline-block;">
-                 Approve Deployment
-              </a>
-
               <h3 style="color:#0d6efd;">Files Changed</h3>
               <pre style="background:#f4f4f4;padding:12px;border:1px solid #ddd;">${{ needs.build.outputs.changed_files }}</pre>
 
