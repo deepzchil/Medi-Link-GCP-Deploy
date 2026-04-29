@@ -1,0 +1,53 @@
+@model ScheduleViewModel
+@{
+    ViewData["Title"] = "Schedule";
+    ViewData["PageTitle"] = "Schedule";
+    var prevWeek = Model.WeekStart.AddDays(-7).ToString("yyyy-MM-dd");
+    var nextWeek = Model.WeekStart.AddDays(7).ToString("yyyy-MM-dd");
+}
+
+<div class="flex-between mb-20">
+    <div>
+        <h2 class="display-title">Weekly Schedule</h2>
+        <p class="text-muted">@Model.WeekStart.ToString("dd MMM") – @Model.WeekEnd.ToString("dd MMM yyyy")</p>
+    </div>
+    <div class="flex gap-8">
+        <a asp-action="Schedule" asp-route-date="@prevWeek" class="btn-secondary">← Prev Week</a>
+        <a asp-action="Schedule" class="btn-secondary">Today</a>
+        <a asp-action="Schedule" asp-route-date="@nextWeek" class="btn-secondary">Next Week →</a>
+        <a asp-action="Create" class="btn-primary">+ Book Appointment</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body" style="overflow-x:auto">
+        <div class="schedule-grid">
+            @foreach (var day in Model.Days)
+            {
+                <div class="day-col">
+                    <div class="day-header @(day.IsToday ? "today" : "")">
+                        <div class="day-name">@day.DayName</div>
+                        <div class="day-date @(day.IsToday ? "today-circle" : "")">@day.Date.Day</div>
+                    </div>
+
+                    @if (!day.Appointments.Any())
+                    {
+                        <div class="no-slots">No appointments</div>
+                    }
+
+                    @foreach (var appt in day.Appointments)
+                    {
+                        var colors = new[]{"#dbeafe","#dcfce7","#fef3c7","#ede9fe","#fce7f3","#dbeafe"};
+                        var color = colors[appt.PatientId % colors.Length];
+                        <a asp-action="Detail" asp-route-id="@appt.Id" class="schedule-slot" style="background:@color">
+                            <div class="slot-name">@appt.Patient?.FirstName @appt.Patient?.LastName[0].</div>
+                            <div class="slot-dept">@appt.Department</div>
+                            <div class="slot-time">@(DateTime.Today + appt.AppointmentTime).ToString("hh:mm tt")</div>
+                            <div class="slot-doctor">@appt.Doctor?.FirstName @appt.Doctor?.LastName[0].</div>
+                        </a>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>

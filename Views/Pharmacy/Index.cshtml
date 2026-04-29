@@ -1,0 +1,110 @@
+@model PharmacyViewModel
+@{
+    ViewData["Title"] = "Pharmacy";
+    ViewData["PageTitle"] = "Pharmacy & Inventory";
+}
+
+<div class="flex-between mb-20">
+    <div>
+        <h2 class="display-title">Pharmacy & Inventory</h2>
+        <p class="text-muted">Manage medicines and stock levels</p>
+    </div>
+    <a asp-action="Create" class="btn-primary">+ Add Medicine</a>
+</div>
+
+<div class="stats-grid mb-20">
+    <div class="stat-card" style="--accent:#10b981">
+        <div class="stat-label">Total Items</div>
+        <div class="stat-value">@Model.TotalItems</div>
+        <div class="stat-change up">In inventory</div>
+        <div class="stat-bg-icon">💊</div>
+    </div>
+    <div class="stat-card" style="--accent:#f59e0b">
+        <div class="stat-label">Low Stock</div>
+        <div class="stat-value">@Model.LowStockCount</div>
+        <div class="stat-change down">Need reorder</div>
+        <div class="stat-bg-icon">⚠️</div>
+    </div>
+    <div class="stat-card" style="--accent:#ef4444">
+        <div class="stat-label">Expiring Soon</div>
+        <div class="stat-value">@Model.ExpiringCount</div>
+        <div class="stat-change down">Within 30 days</div>
+        <div class="stat-bg-icon">📅</div>
+    </div>
+    <div class="stat-card" style="--accent:#00b4d8">
+        <div class="stat-label">Today's Prescriptions</div>
+        <div class="stat-value">@Model.TodayPrescriptions</div>
+        <div class="stat-change up">Dispensed</div>
+        <div class="stat-bg-icon">📋</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body pb-0">
+        <form asp-action="Index" method="get" class="filter-bar">
+            <div class="search-bar flex-1">
+                <span>🔍</span>
+                <input type="text" name="search" placeholder="Search medicine name or category…" value="@Model.SearchTerm" />
+            </div>
+            <select name="category" class="form-select" onchange="this.form.submit()">
+                <option value="">All Categories</option>
+                @foreach (var c in new[]{"Antibiotic","Anti-diabetic","Statin","Antacid","Analgesic","Anti-hypertensive"})
+                { <option value="@c" selected="@(Model.CategoryFilter == c)">@c</option> }
+            </select>
+            <select name="stock" class="form-select" onchange="this.form.submit()">
+                <option value="">All Stock Levels</option>
+                <option value="low" selected="@(Model.StockFilter=="low")">Low / Critical</option>
+                <option value="expiring" selected="@(Model.StockFilter=="expiring")">Expiring Soon</option>
+            </select>
+            <button type="submit" class="btn-secondary">Filter</button>
+            <a asp-action="Index" class="btn-link">Clear</a>
+        </form>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Medicine</th><th>Category</th><th>Form</th><th>Stock Level</th><th>Unit Price</th><th>Expiry</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var m in Model.Medicines)
+                {
+                    var statusBadge = m.StockStatus == StockStatus.InStock ? "success"
+                        : m.StockStatus == StockStatus.LowStock ? "warn"
+                        : m.StockStatus == StockStatus.Critical ? "danger" : "gray";
+                    var barColor = m.StockStatus == StockStatus.InStock ? "#10b981"
+                        : m.StockStatus == StockStatus.LowStock ? "#f59e0b" : "#ef4444";
+                    <tr>
+                        <td>
+                            <div class="td-name">@m.Name</div>
+                            <div class="td-sub">Batch: @(m.BatchNumber ?? "—") · @m.Manufacturer</div>
+                        </td>
+                        <td>@m.Category</td>
+                        <td>@m.Form</td>
+                        <td>
+                            <div class="stock-cell">
+                                <span class="stock-qty">@m.StockQuantity</span>
+                                <div class="progress-bar" style="width:80px">
+                                    <div class="progress-fill" style="width:@m.StockPercentage.ToString("F0")%;background:@barColor"></div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>₹@m.UnitPrice/strip</td>
+                        <td class="@(m.IsExpiringSoon ? "text-danger" : "")">@m.ExpiryDate.ToString("MMM yyyy")</td>
+                        <td><span class="badge badge-@statusBadge">@m.StockStatus</span></td>
+                        <td>
+                            <div class="action-btns">
+                                <a asp-action="Edit" asp-route-id="@m.Id" class="btn-sm">Edit</a>
+                                <form asp-action="Delete" asp-route-id="@m.Id" method="post" style="display:inline" onsubmit="return confirm('Remove?')">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn-sm btn-danger-sm">Del</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Medicines.Any())
+                { <tr><td colspan="8" class="text-center text-muted py-20">No medicines found.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+</div>

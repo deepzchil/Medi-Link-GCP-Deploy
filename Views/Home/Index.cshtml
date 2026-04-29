@@ -1,0 +1,157 @@
+@model DashboardViewModel
+@{
+    ViewData["Title"] = "Dashboard";
+    ViewData["PageTitle"] = "Dashboard";
+}
+
+<div class="page-header">
+    <h2 class="display-title">Good morning, Dr. Kumar 👋</h2>
+    <p class="text-muted">Here's what's happening at MediCare today</p>
+</div>
+
+<!-- STAT CARDS -->
+<div class="stats-grid">
+    <div class="stat-card" style="--accent:#00b4d8">
+        <div class="stat-label">Total Patients</div>
+        <div class="stat-value">@Model.TotalPatients.ToString("N0")</div>
+        <div class="stat-change up">↑ @Model.NewPatientsThisMonth new this month</div>
+        <div class="stat-bg-icon">👤</div>
+    </div>
+    <div class="stat-card" style="--accent:#10b981">
+        <div class="stat-label">Today's Appointments</div>
+        <div class="stat-value">@Model.TodayAppointments</div>
+        <div class="stat-change up">↑ @Model.PendingAppointments pending</div>
+        <div class="stat-bg-icon">📅</div>
+    </div>
+    <div class="stat-card" style="--accent:#f5a623">
+        <div class="stat-label">Available Beds</div>
+        <div class="stat-value">@Model.AvailableBeds</div>
+        <div class="stat-change down">@Model.BedOccupancyPercentage% occupancy</div>
+        <div class="stat-bg-icon">🛏️</div>
+    </div>
+    <div class="stat-card" style="--accent:#8b5cf6">
+        <div class="stat-label">Monthly Revenue</div>
+        <div class="stat-value">₹@((Model.MonthlyRevenue / 100000).ToString("N1"))L</div>
+        <div class="stat-change up">↑ 8.3% vs last month</div>
+        <div class="stat-bg-icon">💰</div>
+    </div>
+</div>
+
+<!-- CHARTS ROW -->
+<div class="grid-2 mt-20">
+    <div class="card">
+        <div class="card-header">
+            <h3>Patient Admissions (This Week)</h3>
+            <a asp-controller="Reports" asp-action="Index" class="link-sm">View Report →</a>
+        </div>
+        <div class="card-body">
+            <div class="bar-chart" id="weeklyChart" data-values="@string.Join(",", Model.WeeklyAdmissions.Select(w => w.Count))" data-labels="@string.Join(",", Model.WeeklyAdmissions.Select(w => w.Day))"></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3>Today's Appointments</h3>
+            <a asp-controller="Appointment" asp-action="Index" class="link-sm">View all →</a>
+        </div>
+        <div class="card-body">
+            @foreach (var appt in Model.TodayAppointmentList.Take(4))
+            {
+                var initials = $"{appt.Patient?.FirstName[0]}{appt.Patient?.LastName[0]}";
+                <div class="appt-item">
+                    <div class="appt-avatar" style="background:#dbeafe;color:#2563eb">@initials</div>
+                    <div class="appt-info">
+                        <div class="appt-name">@appt.Patient?.FullName</div>
+                        <div class="appt-dept">@appt.Department</div>
+                    </div>
+                    <div class="appt-time-col">
+                        <div class="appt-time">@(DateTime.Today + appt.AppointmentTime).ToString("hh:mm tt")</div>
+                        <span class="badge badge-@(appt.Status == AppointmentStatus.Confirmed ? "success" : appt.Status == AppointmentStatus.Pending ? "warn" : "info")">@appt.Status</span>
+                    </div>
+                </div>
+            }
+            @if (!Model.TodayAppointmentList.Any())
+            {
+                <p class="text-muted text-center py-20">No appointments today</p>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- BOTTOM ROW -->
+<div class="grid-3 mt-20">
+    <div class="card">
+        <div class="card-header"><h3>Bed Occupancy</h3></div>
+        <div class="card-body">
+            <div class="donut-wrap">
+                <svg width="100" height="100" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="38" fill="none" stroke="#eef1f6" stroke-width="14"/>
+                    @{
+                        var pct = Model.BedOccupancyPercentage;
+                        var circ = 2 * Math.PI * 38;
+                        var filled = circ * pct / 100;
+                        var empty = circ - filled;
+                    }
+                    <circle cx="50" cy="50" r="38" fill="none" stroke="#00b4d8" stroke-width="14"
+                            stroke-dasharray="@filled.ToString("F1") @empty.ToString("F1")"
+                            stroke-dashoffset="@(circ / 4)" stroke-linecap="round" transform="rotate(-90 50 50)"/>
+                    <text x="50" y="55" text-anchor="middle" font-size="16" font-weight="700" fill="#0a1628">@pct%</text>
+                </svg>
+                <div class="donut-legend">
+                    <div class="legend-item"><span class="legend-dot" style="background:#00b4d8"></span><span class="legend-lbl">Occupied</span><span class="legend-val">@(Model.TotalBeds - Model.AvailableBeds)</span></div>
+                    <div class="legend-item"><span class="legend-dot" style="background:#eef1f6;border:1px solid #dde3ed"></span><span class="legend-lbl">Available</span><span class="legend-val">@Model.AvailableBeds</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><h3>Department Load</h3></div>
+        <div class="card-body">
+            @foreach (var dept in Model.DepartmentLoads)
+            {
+                <div class="dept-load-item">
+                    <div class="dept-load-header">
+                        <span>@dept.Department</span>
+                        <span class="font-600">@dept.LoadPercentage.ToString("F0")%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width:@dept.LoadPercentage.ToString("F0")%;background:@dept.LoadColor"></div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><h3>Quick Actions</h3></div>
+        <div class="card-body">
+            <div class="quick-grid">
+                <a asp-controller="Patient" asp-action="Create" class="quick-btn"><span>➕</span><span>New Patient</span></a>
+                <a asp-controller="Appointment" asp-action="Create" class="quick-btn"><span>📅</span><span>Book Appt.</span></a>
+                <a asp-controller="Pharmacy" asp-action="Create" class="quick-btn"><span>💊</span><span>Prescription</span></a>
+                <a asp-controller="Billing" asp-action="Create" class="quick-btn"><span>🧾</span><span>New Invoice</span></a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ALERTS -->
+@if (Model.Alerts.Any())
+{
+    <div class="card mt-20">
+        <div class="card-header"><h3>Recent Alerts</h3><span class="badge badge-danger">@Model.Alerts.Count</span></div>
+        <div class="card-body">
+            @foreach (var alert in Model.Alerts)
+            {
+                <div class="alert-row">
+                    <span class="alert-dot-sm" style="background:@alert.Color"></span>
+                    <div>
+                        <div class="alert-msg">@alert.Message</div>
+                        <div class="alert-time">@alert.TimeAgo</div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}

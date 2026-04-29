@@ -1,0 +1,73 @@
+@model DoctorListViewModel
+@{
+    ViewData["Title"] = "Doctors & Staff";
+    ViewData["PageTitle"] = "Doctors & Staff";
+}
+
+<div class="flex-between mb-20">
+    <div>
+        <h2 class="display-title">Doctors & Staff</h2>
+        <p class="text-muted">@Model.Doctors.Count active staff members</p>
+    </div>
+    <a asp-action="Create" class="btn-primary">+ Add Staff</a>
+</div>
+
+<div class="card mb-20">
+    <div class="card-body">
+        <form asp-action="Index" method="get" class="filter-bar">
+            <div class="search-bar flex-1">
+                <span>🔍</span>
+                <input type="text" name="search" placeholder="Search by name or specialization…" value="@Model.SearchTerm" />
+            </div>
+            <select name="dept" class="form-select" onchange="this.form.submit()">
+                <option value="">All Departments</option>
+                @foreach (var d in new[]{"Cardiology","Neurology","Orthopedics","Dermatology","Gynecology","Pediatrics","General Medicine","Radiology"})
+                {
+                    <option value="@d" selected="@(Model.DepartmentFilter == d)">@d</option>
+                }
+            </select>
+            <select name="status" class="form-select" onchange="this.form.submit()">
+                <option value="">All Statuses</option>
+                @foreach (DoctorStatus s in Enum.GetValues(typeof(DoctorStatus)))
+                {
+                    <option value="@s" selected="@(Model.StatusFilter == s.ToString())">@s</option>
+                }
+            </select>
+            <button type="submit" class="btn-secondary">Filter</button>
+            <a asp-action="Index" class="btn-link">Clear</a>
+        </form>
+    </div>
+</div>
+
+<div class="staff-grid">
+    @foreach (var doc in Model.Doctors)
+    {
+        var statusBadge = doc.Status == DoctorStatus.Available ? "success"
+            : doc.Status == DoctorStatus.Busy ? "info"
+            : doc.Status == DoctorStatus.InSurgery ? "warn"
+            : doc.Status == DoctorStatus.OffDuty ? "gray" : "danger";
+
+        <div class="staff-card">
+            <div class="staff-avatar" style="background:@doc.AvatarColor">@doc.Initials</div>
+            <div class="staff-name">@doc.FullName</div>
+            <div class="staff-role">@doc.Specialization</div>
+            <div class="staff-dept">@doc.Department</div>
+            <span class="badge badge-@statusBadge mb-10">@doc.Status</span>
+            <div class="staff-stats">
+                <div class="staff-stat"><div class="stat-n">@doc.ExperienceYears</div><div class="stat-l">Years Exp.</div></div>
+                <div class="staff-stat"><div class="stat-n">@doc.Appointments.Count</div><div class="stat-l">Appts</div></div>
+            </div>
+            <div class="staff-card-actions">
+                <a asp-action="Edit" asp-route-id="@doc.Id" class="btn-sm">Edit</a>
+                <form asp-action="Delete" asp-route-id="@doc.Id" method="post" style="display:inline" onsubmit="return confirm('Remove this doctor?')">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn-sm btn-danger-sm">Remove</button>
+                </form>
+            </div>
+        </div>
+    }
+    @if (!Model.Doctors.Any())
+    {
+        <div class="text-center text-muted py-40" style="grid-column:1/-1">No doctors found.</div>
+    }
+</div>

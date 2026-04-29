@@ -1,0 +1,70 @@
+@model Invoice
+@{
+    ViewData["Title"] = Model.InvoiceNumber;
+    ViewData["PageTitle"] = "Billing & Invoices";
+}
+<div class="flex-between mb-20">
+    <a asp-action="Index" class="back-link">← Back to Billing</a>
+    <div class="flex gap-8">
+        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn-secondary">✏️ Edit</a>
+        <button onclick="window.print()" class="btn-primary">🖨️ Print Invoice</button>
+    </div>
+</div>
+<div class="form-page-card" id="invoice-print">
+    <div class="invoice-header">
+        <div>
+            <h1 class="display-title" style="color:var(--teal)">MediCare General Hospital</h1>
+            <p class="text-muted">123, Health Avenue, Hyderabad · +91 40 2345 6789</p>
+        </div>
+        <div class="text-right">
+            <h2 class="display-title">INVOICE</h2>
+            <p class="teal font-600">#@Model.InvoiceNumber</p>
+            <p class="text-muted">@Model.InvoiceDate.ToString("dd MMM yyyy")</p>
+        </div>
+    </div>
+    <hr class="my-20">
+    <div class="grid-2 mb-20">
+        <div>
+            <h4 class="section-label">Bill To</h4>
+            <p class="font-600">@Model.Patient?.FullName</p>
+            <p class="text-muted">@Model.Patient?.PatientCode</p>
+            <p class="text-muted">@Model.Patient?.Phone</p>
+        </div>
+        <div class="text-right">
+            <h4 class="section-label">Payment Info</h4>
+            <p><span class="text-muted">Method:</span> @Model.PaymentMethod</p>
+            @if (Model.DueDate.HasValue)
+            { <p><span class="text-muted">Due Date:</span> @Model.DueDate.Value.ToString("dd MMM yyyy")</p> }
+            <p><span class="text-muted">Status:</span>
+                <span class="badge badge-@(Model.Status==InvoiceStatus.Paid?"success":Model.Status==InvoiceStatus.Overdue?"danger":"warn")">@Model.Status</span>
+            </p>
+        </div>
+    </div>
+    @if (Model.Items.Any())
+    {
+        <table style="margin-bottom:20px">
+            <thead><tr><th>Description</th><th>Qty</th><th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th></tr></thead>
+            <tbody>
+                @foreach (var item in Model.Items)
+                {
+                    <tr>
+                        <td>@item.Description</td>
+                        <td>@item.Quantity</td>
+                        <td style="text-align:right">₹@item.UnitPrice.ToString("N2")</td>
+                        <td style="text-align:right">₹@item.Total.ToString("N2")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    <div class="invoice-totals">
+        <div class="total-row"><span>Subtotal</span><span>₹@Model.SubTotal.ToString("N2")</span></div>
+        @if (Model.Discount > 0) { <div class="total-row text-success"><span>Discount</span><span>- ₹@Model.Discount.ToString("N2")</span></div> }
+        @if (Model.TaxAmount > 0) { <div class="total-row"><span>Tax (GST)</span><span>₹@Model.TaxAmount.ToString("N2")</span></div> }
+        <div class="total-row total-grand"><span>Total</span><span>₹@Model.TotalAmount.ToString("N2")</span></div>
+        <div class="total-row text-success"><span>Paid</span><span>₹@Model.PaidAmount.ToString("N2")</span></div>
+        @if (Model.BalanceAmount > 0) { <div class="total-row text-danger font-600"><span>Balance Due</span><span>₹@Model.BalanceAmount.ToString("N2")</span></div> }
+    </div>
+    @if (!string.IsNullOrEmpty(Model.Notes))
+    { <div class="mt-20"><h4 class="section-label">Notes</h4><p class="text-body">@Model.Notes</p></div> }
+</div>

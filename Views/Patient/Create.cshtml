@@ -1,0 +1,106 @@
+@model PatientFormViewModel
+@{
+    ViewData["Title"] = "Register Patient";
+    ViewData["PageTitle"] = "Patients";
+}
+
+<div class="mb-20">
+    <a asp-action="Index" class="back-link">← Back to Patients</a>
+</div>
+
+<div class="form-page-card">
+    <div class="form-page-header">
+        <h2 class="display-title">Register New Patient</h2>
+        <p class="text-muted">Fill in the patient's details below</p>
+    </div>
+
+    <form asp-action="Create" method="post">
+        @Html.AntiForgeryToken()
+        <div asp-validation-summary="All" class="validation-summary"></div>
+
+        <div class="form-section">
+            <h3 class="form-section-title">Personal Information</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label asp-for="FirstName"></label>
+                    <input asp-for="FirstName" class="form-control" placeholder="Enter first name" />
+                    <span asp-validation-for="FirstName" class="field-error"></span>
+                </div>
+                <div class="form-group">
+                    <label asp-for="LastName"></label>
+                    <input asp-for="LastName" class="form-control" placeholder="Enter last name" />
+                    <span asp-validation-for="LastName" class="field-error"></span>
+                </div>
+                <div class="form-group">
+                    <label asp-for="DateOfBirth"></label>
+                    <input asp-for="DateOfBirth" type="date" class="form-control" />
+                    <span asp-validation-for="DateOfBirth" class="field-error"></span>
+                </div>
+                <div class="form-group">
+                    <label asp-for="Gender"></label>
+                    <select asp-for="Gender" class="form-control">
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label asp-for="BloodGroup"></label>
+                    <select asp-for="BloodGroup" class="form-control">
+                        @foreach (var bg in new[] { "A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-" })
+                        {
+                            <option value="@bg">@bg</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label asp-for="Status"></label>
+                    <select asp-for="Status" asp-items="Html.GetEnumSelectList<PatientStatus>()" class="form-control"></select>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3 class="form-section-title">Contact Information</h3>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label asp-for="Phone"></label>
+                    <input asp-for="Phone" class="form-control" placeholder="+91 XXXXX XXXXX" />
+                    <span asp-validation-for="Phone" class="field-error"></span>
+                </div>
+                <div class="form-group">
+                    <label asp-for="Email"></label>
+                    <input asp-for="Email" class="form-control" placeholder="patient@email.com" />
+                    <span asp-validation-for="Email" class="field-error"></span>
+                </div>
+                <div class="form-group full">
+                    <label asp-for="Address"></label>
+                    <input asp-for="Address" class="form-control" placeholder="Full address" />
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3 class="form-section-title">Medical Information</h3>
+            <div class="form-grid">
+                <div class="form-group full">
+                    <label asp-for="MedicalHistory"></label>
+                    <textarea asp-for="MedicalHistory" class="form-control" rows="3" placeholder="Existing conditions, past surgeries…"></textarea>
+                </div>
+                <div class="form-group full">
+                    <label asp-for="Allergies"></label>
+                    <textarea asp-for="Allergies" class="form-control" rows="2" placeholder="Known drug or food allergies…"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">Register Patient</button>
+            <a asp-action="Index" class="btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+}

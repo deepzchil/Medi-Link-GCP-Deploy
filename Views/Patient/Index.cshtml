@@ -1,0 +1,91 @@
+@* Views/Patient/Index.cshtml *@
+@model PatientListViewModel
+@{
+    ViewData["Title"] = "Patients";
+    ViewData["PageTitle"] = "Patients";
+}
+
+<div class="flex-between mb-20">
+    <div>
+        <h2 class="display-title">Patients</h2>
+        <p class="text-muted">@Model.TotalCount registered patients</p>
+    </div>
+    <a asp-action="Create" class="btn-primary">+ Register Patient</a>
+</div>
+
+<div class="card">
+    <div class="card-body pb-0">
+        <form asp-action="Index" method="get" class="filter-bar">
+            <div class="search-bar flex-1">
+                <span>🔍</span>
+                <input type="text" name="search" placeholder="Search by name, phone, email…" value="@Model.SearchTerm" />
+            </div>
+            <select name="status" class="form-select" onchange="this.form.submit()">
+                <option value="">All Statuses</option>
+                @foreach (PatientStatus s in Enum.GetValues(typeof(PatientStatus)))
+                {
+                    <option value="@s" selected="@(Model.StatusFilter == s.ToString())">@s</option>
+                }
+            </select>
+            <button type="submit" class="btn-secondary">Filter</button>
+            <a asp-action="Index" class="btn-link">Clear</a>
+        </form>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Patient</th><th>Age / Gender</th><th>Contact</th>
+                    <th>Blood Group</th><th>Registered On</th><th>Status</th><th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in Model.Patients)
+                {
+                    <tr>
+                        <td>
+                            <div class="td-name">@p.FullName</div>
+                            <div class="td-sub">@p.PatientCode</div>
+                        </td>
+                        <td>@p.Age yrs / @p.Gender</td>
+                        <td>
+                            <div>@p.Phone</div>
+                            <div class="td-sub">@p.Email</div>
+                        </td>
+                        <td><span class="badge badge-info">@p.BloodGroup</span></td>
+                        <td>@p.RegisteredOn.ToString("dd MMM yyyy")</td>
+                        <td>
+                            <span class="badge badge-@(p.Status == PatientStatus.Active ? "success" : p.Status == PatientStatus.Admitted ? "danger" : "warn")">
+                                @p.Status
+                            </span>
+                        </td>
+                        <td>
+                            <div class="action-btns">
+                                <a asp-action="Detail" asp-route-id="@p.Id" class="btn-sm">View</a>
+                                <a asp-action="Edit" asp-route-id="@p.Id" class="btn-sm">Edit</a>
+                                <form asp-action="Delete" asp-route-id="@p.Id" method="post" style="display:inline" onsubmit="return confirm('Delete this patient?')">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="btn-sm btn-danger-sm">Del</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Patients.Any())
+                {
+                    <tr><td colspan="7" class="text-center text-muted py-20">No patients found.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (Model.TotalPages > 1)
+    {
+        <div class="pagination">
+            @for (int i = 1; i <= Model.TotalPages; i++)
+            {
+                <a asp-action="Index" asp-route-page="@i" asp-route-search="@Model.SearchTerm"
+                   class="page-btn @(i == Model.Page ? "active" : "")">@i</a>
+            }
+        </div>
+    }
+</div>

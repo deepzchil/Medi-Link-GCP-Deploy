@@ -1,0 +1,76 @@
+@model ReportsViewModel
+@{
+    ViewData["Title"] = "Reports";
+    ViewData["PageTitle"] = "Reports & Analytics";
+}
+
+<div class="page-header mb-20">
+    <h2 class="display-title">Analytics & Reports</h2>
+    <p class="text-muted">Hospital performance insights for the current period</p>
+</div>
+
+<div class="stats-grid mb-20">
+    <div class="stat-card" style="--accent:#10b981"><div class="stat-label">Patient Satisfaction</div><div class="stat-value">@Model.PatientSatisfaction%</div><div class="stat-change up">Excellent</div></div>
+    <div class="stat-card" style="--accent:#00b4d8"><div class="stat-label">Avg. Stay Duration</div><div class="stat-value">@Model.AverageStayDays days</div><div class="stat-change up">Within target</div></div>
+    <div class="stat-card" style="--accent:#f59e0b"><div class="stat-label">Avg. Wait Time</div><div class="stat-value">@Model.AverageWaitMinutes min</div><div class="stat-change down">↑ 2 min vs last month</div></div>
+    <div class="stat-card" style="--accent:#8b5cf6"><div class="stat-label">Bed Availability</div><div class="stat-value">@Model.BedAvailabilityUptime%</div><div class="stat-change up">Uptime</div></div>
+</div>
+
+<div class="grid-2 mb-20">
+    <div class="card">
+        <div class="card-header"><h3>Monthly Patient Volume (12 months)</h3></div>
+        <div class="card-body">
+            <div class="bar-chart" id="monthlyChart"
+                 data-values="@string.Join(",", Model.MonthlyRevenues.Select(m => m.Patients))"
+                 data-labels="@string.Join(",", Model.MonthlyRevenues.Select(m => m.Month))"
+                 data-color="#8b5cf6"></div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header"><h3>Revenue Breakdown</h3></div>
+        <div class="card-body">
+            <div class="revenue-breakdown">
+                <div class="rev-item">
+                    <div class="rev-header"><span>Consultations</span><span class="font-600">₹@((Model.RevenueBreakdown.Consultations/100000).ToString("N1"))L (@Model.RevenueBreakdown.ConsultationsPercent%)</span></div>
+                    <div class="progress-bar" style="height:10px;border-radius:5px"><div class="progress-fill" style="width:@Model.RevenueBreakdown.ConsultationsPercent%;background:#00b4d8;height:10px;border-radius:5px"></div></div>
+                </div>
+                <div class="rev-item">
+                    <div class="rev-header"><span>Surgeries</span><span class="font-600">₹@((Model.RevenueBreakdown.Surgeries/100000).ToString("N1"))L (@Model.RevenueBreakdown.SurgeriesPercent%)</span></div>
+                    <div class="progress-bar" style="height:10px;border-radius:5px"><div class="progress-fill" style="width:@Model.RevenueBreakdown.SurgeriesPercent%;background:#8b5cf6;height:10px;border-radius:5px"></div></div>
+                </div>
+                <div class="rev-item">
+                    <div class="rev-header"><span>Pharmacy</span><span class="font-600">₹@((Model.RevenueBreakdown.Pharmacy/100000).ToString("N1"))L (@Model.RevenueBreakdown.PharmacyPercent%)</span></div>
+                    <div class="progress-bar" style="height:10px;border-radius:5px"><div class="progress-fill" style="width:@Model.RevenueBreakdown.PharmacyPercent%;background:#10b981;height:10px;border-radius:5px"></div></div>
+                </div>
+                <div class="rev-item">
+                    <div class="rev-header"><span>Lab & Imaging</span><span class="font-600">₹@((Model.RevenueBreakdown.LabImaging/100000).ToString("N1"))L (@Model.RevenueBreakdown.LabPercent%)</span></div>
+                    <div class="progress-bar" style="height:10px;border-radius:5px"><div class="progress-fill" style="width:@Model.RevenueBreakdown.LabPercent%;background:#f59e0b;height:10px;border-radius:5px"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h3>Top Departments by Patient Volume</h3></div>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>#</th><th>Department</th><th>Patients</th><th>Revenue</th><th>Load</th></tr></thead>
+            <tbody>
+                @{ int rank = 1; }
+                @foreach (var dept in Model.DepartmentStats)
+                {
+                    var lb = dept.LoadLevel == "High load" ? "danger" : dept.LoadLevel == "Medium" ? "warn" : "success";
+                    <tr>
+                        <td class="font-600 teal">@rank</td>
+                        <td class="font-600">@dept.Department</td>
+                        <td>@dept.PatientCount patients</td>
+                        <td>₹@((dept.Revenue/100000).ToString("N1"))L</td>
+                        <td><span class="badge badge-@lb">@dept.LoadLevel</span></td>
+                    </tr>
+                    rank++;
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

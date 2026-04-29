@@ -1,0 +1,99 @@
+@model BillingViewModel
+@{
+    ViewData["Title"] = "Billing";
+    ViewData["PageTitle"] = "Billing & Invoices";
+}
+
+<div class="flex-between mb-20">
+    <div>
+        <h2 class="display-title">Billing & Invoices</h2>
+        <p class="text-muted">Manage patient billing and payments</p>
+    </div>
+    <a asp-action="Create" class="btn-primary">+ New Invoice</a>
+</div>
+
+<div class="stats-grid mb-20">
+    <div class="stat-card" style="--accent:#10b981">
+        <div class="stat-label">Total Collected</div>
+        <div class="stat-value">₹@((Model.TotalCollected/100000).ToString("N1"))L</div>
+        <div class="stat-change up">This month</div>
+        <div class="stat-bg-icon">✅</div>
+    </div>
+    <div class="stat-card" style="--accent:#f59e0b">
+        <div class="stat-label">Pending</div>
+        <div class="stat-value">₹@((Model.TotalPending/1000).ToString("N0"))K</div>
+        <div class="stat-change down">Awaiting payment</div>
+        <div class="stat-bg-icon">⏳</div>
+    </div>
+    <div class="stat-card" style="--accent:#ef4444">
+        <div class="stat-label">Overdue</div>
+        <div class="stat-value">₹@((Model.TotalOverdue/1000).ToString("N0"))K</div>
+        <div class="stat-change down">Past due date</div>
+        <div class="stat-bg-icon">❗</div>
+    </div>
+    <div class="stat-card" style="--accent:#00b4d8">
+        <div class="stat-label">Insurance Claims</div>
+        <div class="stat-value">@Model.InsuranceClaims</div>
+        <div class="stat-change up">Pending claims</div>
+        <div class="stat-bg-icon">🏥</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body pb-0">
+        <form asp-action="Index" method="get" class="filter-bar">
+            <div class="search-bar flex-1">
+                <span>🔍</span>
+                <input type="text" name="search" placeholder="Search by patient name…" value="@Model.SearchTerm" />
+            </div>
+            <select name="status" class="form-select" onchange="this.form.submit()">
+                <option value="">All Statuses</option>
+                @foreach (InvoiceStatus s in Enum.GetValues(typeof(InvoiceStatus)))
+                { <option value="@s" selected="@(Model.StatusFilter == s.ToString())">@s</option> }
+            </select>
+            <button type="submit" class="btn-secondary">Filter</button>
+            <a asp-action="Index" class="btn-link">Clear</a>
+        </form>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Invoice #</th><th>Patient</th><th>Services</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Payment</th><th>Date</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var inv in Model.Invoices)
+                {
+                    var sb = inv.Status == InvoiceStatus.Paid ? "success"
+                        : inv.Status == InvoiceStatus.Overdue ? "danger"
+                        : inv.Status == InvoiceStatus.Partial ? "warn" : "info";
+                    <tr>
+                        <td class="teal font-600">@inv.InvoiceNumber</td>
+                        <td><div class="td-name">@inv.Patient?.FullName</div></td>
+                        <td><div class="td-sub" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@inv.Services</div></td>
+                        <td class="font-600">₹@inv.TotalAmount.ToString("N0")</td>
+                        <td class="text-success">₹@inv.PaidAmount.ToString("N0")</td>
+                        <td class="@(inv.BalanceAmount > 0 ? "text-danger" : "")">₹@inv.BalanceAmount.ToString("N0")</td>
+                        <td>@inv.PaymentMethod</td>
+                        <td>@inv.InvoiceDate.ToString("dd MMM yyyy")</td>
+                        <td><span class="badge badge-@sb">@inv.Status</span></td>
+                        <td>
+                            <div class="action-btns">
+                                <a asp-action="Detail" asp-route-id="@inv.Id" class="btn-sm">View</a>
+                                <a asp-action="Edit" asp-route-id="@inv.Id" class="btn-sm">Edit</a>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                @if (!Model.Invoices.Any())
+                { <tr><td colspan="10" class="text-center text-muted py-20">No invoices found.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+    @if (Model.TotalPages > 1)
+    {
+        <div class="pagination">
+            @for (int i = 1; i <= Model.TotalPages; i++)
+            { <a asp-action="Index" asp-route-page="@i" class="page-btn @(i == Model.Page ? "active" : "")">@i</a> }
+        </div>
+    }
+</div>

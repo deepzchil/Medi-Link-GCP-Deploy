@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - MediCare HMS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    @await RenderSectionAsync("Styles", required: false)
+</head>
+<body>
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <div class="cross-icon">✚</div>
+            <h1>MediCare HMS</h1>
+            <p>Hospital Management System</p>
+        </div>
+
+        <nav class="sidebar-nav">
+            <div class="nav-section">
+                <div class="nav-label">Overview</div>
+                <a class="nav-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Home" ? "active" : "")" asp-controller="Home" asp-action="Index">
+                    <span class="nav-icon">🏥</span> Dashboard
+                </a>
+                <a class="nav-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Appointment" && ViewContext.RouteData.Values["action"]?.ToString() != "Schedule" ? "active" : "")" asp-controller="Appointment" asp-action="Index">
+                    <span class="nav-icon">📅</span> Appointments
+                    <span class="nav-badge">8</span>
+                </a>
+                <a class="nav-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Patient" ? "active" : "")" asp-controller="Patient" asp-action="Index">
+                    <span class="nav-icon">👤</span> Patients
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-label">Clinical</div>
+                <a class="nav-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Doctor" ? "active" : "")" asp-controller="Doctor" asp-action="Index">
+                    <span class="nav-icon">🩺</span> Doctors & Staff
+                </a>
+                <a class="nav-item @(ViewContext.RouteData.Values["action"]?.ToString() == "Schedule" ? "active" : "")" asp-controller="Appointment" asp-action="Schedule">
+                    <span class="nav-icon">🗓️</span> Schedule
+                </a>
+                <a class="nav-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Pharmacy" ? "active" : "")" asp-controller="Pharmacy" asp-action="Index">
+                    <span class="nav-icon">💊</span> Pharmacy
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-label">Operations</div>
+                <a class="nav-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Billing" ? "active" : "")" asp-controller="Billing" asp-action="Index">
+                    <span class="nav-icon">💳</span> Billing
+                </a>
+                <a class="nav-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Reports" ? "active" : "")" asp-controller="Reports" asp-action="Index">
+                    <span class="nav-icon">📊</span> Reports
+                </a>
+                <a class="nav-item @(ViewContext.RouteData.Values["controller"]?.ToString() == "Settings" ? "active" : "")" asp-controller="Settings" asp-action="Index">
+                    <span class="nav-icon">⚙️</span> Settings
+                </a>
+            </div>
+        </nav>
+
+        <div class="sidebar-user">
+            <div class="user-avatar">DR</div>
+            <div class="user-info">
+                <div class="user-name">Dr. Ramesh Kumar</div>
+                <div class="user-role">Administrator</div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- MAIN -->
+    <div class="main-wrapper">
+        <!-- TOPBAR -->
+        <header class="topbar">
+            <div class="topbar-left">
+                <h2>@ViewData["PageTitle"]</h2>
+                <p>@DateTime.Now.ToString("dddd, dd MMMM yyyy") &nbsp;·&nbsp; MediCare General Hospital</p>
+            </div>
+            <div class="topbar-right">
+                <form asp-controller="Patient" asp-action="Index" method="get" class="search-bar">
+                    <span>🔍</span>
+                    <input type="text" name="search" placeholder="Search patients, doctors…" value="@ViewData["SearchTerm"]" />
+                </form>
+                <div class="icon-btn notif-btn" title="Notifications">
+                    🔔<span class="notif-dot"></span>
+                </div>
+                <div class="icon-btn" title="Help">❓</div>
+            </div>
+        </header>
+
+        <!-- ALERTS -->
+        @if (TempData["Success"] != null)
+        {
+            <div class="alert-banner alert-success">
+                ✅ @TempData["Success"]
+                <button class="alert-close" onclick="this.parentElement.remove()">✕</button>
+            </div>
+        }
+        @if (TempData["Error"] != null)
+        {
+            <div class="alert-banner alert-error">
+                ❌ @TempData["Error"]
+                <button class="alert-close" onclick="this.parentElement.remove()">✕</button>
+            </div>
+        }
+
+        <!-- PAGE CONTENT -->
+        <main class="page-content">
+            @RenderBody()
+        </main>
+    </div>
+
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

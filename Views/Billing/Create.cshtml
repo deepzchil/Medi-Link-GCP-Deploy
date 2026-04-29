@@ -1,0 +1,82 @@
+@model InvoiceFormViewModel
+@{
+    bool isEdit = Model.Id > 0;
+    ViewData["Title"] = isEdit ? "Edit Invoice" : "New Invoice";
+    ViewData["PageTitle"] = "Billing & Invoices";
+}
+<div class="mb-20"><a asp-action="Index" class="back-link">← Back to Billing</a></div>
+<div class="form-page-card">
+    <div class="form-page-header">
+        <h2 class="display-title">@(isEdit ? "Edit Invoice" : "Create New Invoice")</h2>
+    </div>
+    <form asp-action="@(isEdit ? "Edit" : "Create")" asp-route-id="@(isEdit ? Model.Id : null)" method="post">
+        @Html.AntiForgeryToken()
+        <div asp-validation-summary="All" class="validation-summary"></div>
+        <div class="form-section">
+            <h3 class="form-section-title">Patient & Services</h3>
+            <div class="form-grid">
+                <div class="form-group full">
+                    <label asp-for="PatientId">Patient</label>
+                    <select asp-for="PatientId" class="form-control">
+                        <option value="">— Select Patient —</option>
+                        @foreach (var p in Model.Patients) { <option value="@p.Id">@p.FullName (@p.PatientCode)</option> }
+                    </select>
+                </div>
+                <div class="form-group full">
+                    <label asp-for="Services">Services Description</label>
+                    <textarea asp-for="Services" class="form-control" rows="2" placeholder="e.g., Cardiology Consultation + ECG + Blood Test"></textarea>
+                </div>
+            </div>
+        </div>
+        <div class="form-section">
+            <h3 class="form-section-title">Line Items</h3>
+            <div class="table-wrap">
+                <table id="items-table">
+                    <thead><tr><th>Description</th><th>Qty</th><th>Unit Price (₹)</th><th>Total</th><th></th></tr></thead>
+                    <tbody id="items-body">
+                        <tr>
+                            <td><input name="Items[0].Description" class="form-control" placeholder="Service or item" /></td>
+                            <td><input name="Items[0].Quantity" type="number" class="form-control" value="1" min="1" style="width:70px" /></td>
+                            <td><input name="Items[0].UnitPrice" type="number" step="0.01" class="form-control" placeholder="0.00" style="width:120px" /></td>
+                            <td class="font-600 item-total">₹0</td>
+                            <td></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <button type="button" class="btn-link mt-10" onclick="addRow()">+ Add Line Item</button>
+        </div>
+        <div class="form-section">
+            <h3 class="form-section-title">Payment Details</h3>
+            <div class="form-grid">
+                <div class="form-group"><label asp-for="Discount">Discount (₹)</label><input asp-for="Discount" type="number" step="0.01" class="form-control" /></div>
+                <div class="form-group"><label asp-for="TaxRate">Tax Rate (%)</label><input asp-for="TaxRate" type="number" step="0.01" class="form-control" /></div>
+                <div class="form-group"><label asp-for="PaidAmount">Paid Amount (₹)</label><input asp-for="PaidAmount" type="number" step="0.01" class="form-control" /></div>
+                <div class="form-group"><label asp-for="PaymentMethod">Payment Method</label><select asp-for="PaymentMethod" asp-items="Html.GetEnumSelectList<PaymentMethod>()" class="form-control"></select></div>
+                <div class="form-group"><label asp-for="Status">Invoice Status</label><select asp-for="Status" asp-items="Html.GetEnumSelectList<InvoiceStatus>()" class="form-control"></select></div>
+                <div class="form-group"><label asp-for="DueDate">Due Date</label><input asp-for="DueDate" type="date" class="form-control" /></div>
+                <div class="form-group full"><label asp-for="Notes">Notes</label><textarea asp-for="Notes" class="form-control" rows="2"></textarea></div>
+            </div>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">@(isEdit ? "Save Changes" : "Create Invoice")</button>
+            <a asp-action="Index" class="btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+@section Scripts {
+    <script>
+        let rowCount = 1;
+        function addRow() {
+            const tbody = document.getElementById('items-body');
+            const i = rowCount++;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td><input name="Items[${i}].Description" class="form-control" placeholder="Service or item" /></td>
+                <td><input name="Items[${i}].Quantity" type="number" class="form-control" value="1" min="1" style="width:70px" /></td>
+                <td><input name="Items[${i}].UnitPrice" type="number" step="0.01" class="form-control" placeholder="0.00" style="width:120px" /></td>
+                <td class="font-600 item-total">₹0</td>
+                <td><button type="button" onclick="this.closest('tr').remove()" class="btn-sm btn-danger-sm">✕</button></td>`;
+            tbody.appendChild(tr);
+        }
+    </script>
+}

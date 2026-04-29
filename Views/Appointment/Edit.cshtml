@@ -1,0 +1,45 @@
+@* Views/Appointment/Edit.cshtml *@
+@model AppointmentFormViewModel
+@{
+    ViewData["Title"] = "Edit Appointment";
+    ViewData["PageTitle"] = "Appointments";
+}
+<div class="mb-20"><a asp-action="Index" class="back-link">← Back to Appointments</a></div>
+<div class="form-page-card">
+    <div class="form-page-header"><h2 class="display-title">Edit Appointment</h2></div>
+    <form asp-action="Edit" asp-route-id="@Model.Id" method="post">
+        @Html.AntiForgeryToken()
+        <div class="form-grid">
+            <div class="form-group full">
+                <label>Patient</label>
+                <select asp-for="PatientId" class="form-control">
+                    @foreach (var p in Model.Patients) { <option value="@p.Id">@p.FullName</option> }
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Doctor</label>
+                <select asp-for="DoctorId" class="form-control">
+                    @foreach (var d in Model.Doctors) { <option value="@d.Id">@d.FullName</option> }
+                </select>
+            </div>
+            <div class="form-group">
+                <label asp-for="Department"></label>
+                <select asp-for="Department" class="form-control">
+                    @foreach (var dept in new[]{"Cardiology","Neurology","Orthopedics","Dermatology","Gynecology","Pediatrics","General Medicine","Radiology"})
+                    { <option value="@dept">@dept</option> }
+                </select>
+            </div>
+            <div class="form-group"><label>Date</label><input asp-for="AppointmentDate" type="date" class="form-control" /></div>
+            <div class="form-group"><label>Time</label><input asp-for="AppointmentTime" type="time" class="form-control" /></div>
+            <div class="form-group"><label>Type</label><select asp-for="Type" asp-items="Html.GetEnumSelectList<AppointmentType>()" class="form-control"></select></div>
+            <div class="form-group"><label>Status</label><select asp-for="Status" asp-items="Html.GetEnumSelectList<AppointmentStatus>()" class="form-control"></select></div>
+            <div class="form-group full"><label>Notes</label><textarea asp-for="Notes" class="form-control" rows="3"></textarea></div>
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">Save Changes</button>
+            <a asp-action="Index" class="btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+
+@* Views/Appointment/Detail.cshtml *@

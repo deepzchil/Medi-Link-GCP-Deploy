@@ -1,0 +1,106 @@
+@model PatientDetailViewModel
+@{
+    ViewData["Title"] = Model.Patient.FullName;
+    ViewData["PageTitle"] = "Patients";
+    var p = Model.Patient;
+}
+
+<div class="flex-between mb-20">
+    <a asp-action="Index" class="back-link">← Back to Patients</a>
+    <div class="flex gap-8">
+        <a asp-action="Edit" asp-route-id="@p.Id" class="btn-secondary">✏️ Edit</a>
+        <form asp-action="Delete" asp-route-id="@p.Id" method="post" onsubmit="return confirm('Delete this patient?')">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn-danger">🗑 Delete</button>
+        </form>
+    </div>
+</div>
+
+<div class="grid-2" style="align-items:start">
+    <div>
+        <div class="card mb-20">
+            <div class="card-body">
+                <div class="patient-profile-header">
+                    <div class="patient-avatar-lg">@($"{p.FirstName[0]}{p.LastName[0]}")</div>
+                    <div>
+                        <h2 class="display-title">@p.FullName</h2>
+                        <p class="text-muted">@p.PatientCode</p>
+                        <span class="badge badge-@(p.Status == PatientStatus.Active ? "success" : p.Status == PatientStatus.Admitted ? "danger" : "warn") mt-6">@p.Status</span>
+                    </div>
+                </div>
+                <div class="detail-grid mt-20">
+                    <div class="detail-item"><span class="detail-label">Age</span><span class="detail-value">@p.Age years</span></div>
+                    <div class="detail-item"><span class="detail-label">Gender</span><span class="detail-value">@p.Gender</span></div>
+                    <div class="detail-item"><span class="detail-label">Blood Group</span><span class="detail-value"><span class="badge badge-danger">@p.BloodGroup</span></span></div>
+                    <div class="detail-item"><span class="detail-label">DOB</span><span class="detail-value">@p.DateOfBirth.ToString("dd MMM yyyy")</span></div>
+                    <div class="detail-item"><span class="detail-label">Phone</span><span class="detail-value">@p.Phone</span></div>
+                    <div class="detail-item"><span class="detail-label">Email</span><span class="detail-value">@(p.Email ?? "—")</span></div>
+                    <div class="detail-item full"><span class="detail-label">Address</span><span class="detail-value">@(p.Address ?? "—")</span></div>
+                    <div class="detail-item full"><span class="detail-label">Registered On</span><span class="detail-value">@p.RegisteredOn.ToString("dd MMM yyyy")</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h3>Medical History & Allergies</h3></div>
+            <div class="card-body">
+                <h4 class="section-label">Medical History</h4>
+                <p class="text-body">@(p.MedicalHistory ?? "No medical history recorded.")</p>
+                <h4 class="section-label mt-12">Allergies</h4>
+                <p class="text-body">@(p.Allergies ?? "No known allergies.")</p>
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <div class="card mb-20">
+            <div class="card-header">
+                <h3>Recent Appointments</h3>
+                <a asp-controller="Appointment" asp-action="Create" class="link-sm">+ Book</a>
+            </div>
+            <div class="card-body">
+                @foreach (var appt in Model.RecentAppointments)
+                {
+                    <div class="timeline-item">
+                        <div class="timeline-dot" style="background:@(appt.Status == AppointmentStatus.Completed ? "#10b981" : "#00b4d8")"></div>
+                        <div>
+                            <div class="timeline-title">@appt.Department — @appt.Type</div>
+                            <div class="timeline-sub">@appt.Doctor?.FullName · @appt.AppointmentDate.ToString("dd MMM yyyy")</div>
+                            <span class="badge badge-@(appt.Status == AppointmentStatus.Completed ? "success" : "info")">@appt.Status</span>
+                        </div>
+                    </div>
+                }
+                @if (!Model.RecentAppointments.Any())
+                {
+                    <p class="text-muted">No appointments yet.</p>
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3>Recent Invoices</h3>
+                <a asp-controller="Billing" asp-action="Create" class="link-sm">+ New</a>
+            </div>
+            <div class="card-body">
+                @foreach (var inv in Model.RecentInvoices)
+                {
+                    <div class="invoice-row">
+                        <div>
+                            <div class="font-600 teal">#@inv.InvoiceNumber</div>
+                            <div class="td-sub">@inv.InvoiceDate.ToString("dd MMM yyyy")</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="font-600">₹@inv.TotalAmount.ToString("N0")</div>
+                            <span class="badge badge-@(inv.Status == InvoiceStatus.Paid ? "success" : inv.Status == InvoiceStatus.Overdue ? "danger" : "warn")">@inv.Status</span>
+                        </div>
+                    </div>
+                }
+                @if (!Model.RecentInvoices.Any())
+                {
+                    <p class="text-muted">No invoices yet.</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>

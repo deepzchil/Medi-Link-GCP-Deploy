@@ -1,0 +1,91 @@
+@{
+    ViewData["Title"] = "Settings";
+    ViewData["PageTitle"] = "Settings";
+}
+
+<div class="page-header mb-20">
+    <h2 class="display-title">Settings</h2>
+    <p class="text-muted">Configure hospital system preferences</p>
+</div>
+
+<div class="grid-2" style="align-items:start">
+    <div>
+        <div class="card mb-20">
+            <div class="card-header"><h3>🏥 Hospital Information</h3></div>
+            <div class="card-body">
+                <form asp-action="SaveHospitalInfo" method="post">
+                    @Html.AntiForgeryToken()
+                    <div class="form-grid" style="grid-template-columns:1fr">
+                        <div class="form-group"><label>Hospital Name</label><input type="text" class="form-control" value="MediCare General Hospital" /></div>
+                        <div class="form-group"><label>Registration Number</label><input type="text" class="form-control" value="KA-HOS-2018-0847" /></div>
+                        <div class="form-group"><label>Phone</label><input type="tel" class="form-control" value="+91 40 2345 6789" /></div>
+                        <div class="form-group"><label>Email</label><input type="email" class="form-control" value="admin@medicare.in" /></div>
+                        <div class="form-group"><label>Address</label><textarea class="form-control" rows="2">123, Health Avenue, Hyderabad, Telangana - 500001</textarea></div>
+                    </div>
+                    <div class="form-actions mt-16">
+                        <button type="submit" class="btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h3>🔔 Notification Preferences</h3></div>
+            <div class="card-body">
+                <div class="toggle-item">
+                    <div><div class="font-600">Appointment Reminders</div><div class="td-sub">Send SMS to patients 1 hour before appointment</div></div>
+                    <label class="toggle"><input type="checkbox" checked /><span class="toggle-slider"></span></label>
+                </div>
+                <div class="toggle-item">
+                    <div><div class="font-600">Low Stock Alerts</div><div class="td-sub">Pharmacy notifications when stock drops below minimum</div></div>
+                    <label class="toggle"><input type="checkbox" checked /><span class="toggle-slider"></span></label>
+                </div>
+                <div class="toggle-item">
+                    <div><div class="font-600">Payment Overdue Alerts</div><div class="td-sub">Notify admin when invoice passes due date</div></div>
+                    <label class="toggle"><input type="checkbox" /></label>
+                </div>
+                <div class="toggle-item">
+                    <div><div class="font-600">Daily Summary Report</div><div class="td-sub">Email daily summary at 9 PM every day</div></div>
+                    <label class="toggle"><input type="checkbox" checked /><span class="toggle-slider"></span></label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div>
+        <div class="card mb-20">
+            <div class="card-header"><h3>🔐 Security & Password</h3></div>
+            <div class="card-body">
+                <div class="user-info-box mb-16">
+                    <div class="user-avatar-md">DR</div>
+                    <div>
+                        <div class="font-600">Dr. Ramesh Kumar</div>
+                        <div class="td-sub">Administrator · Last login: Today 08:42 AM</div>
+                    </div>
+                </div>
+                <form asp-action="UpdatePassword" method="post">
+                    @Html.AntiForgeryToken()
+                    <div class="form-grid" style="grid-template-columns:1fr">
+                        <div class="form-group"><label>Current Password</label><input type="password" class="form-control" placeholder="Enter current password" /></div>
+                        <div class="form-group"><label>New Password</label><input type="password" class="form-control" placeholder="Enter new password (min 8 chars)" /></div>
+                        <div class="form-group"><label>Confirm Password</label><input type="password" class="form-control" placeholder="Re-enter new password" /></div>
+                    </div>
+                    <div class="form-actions mt-16">
+                        <button type="submit" class="btn-primary">Update Password</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h3>👥 Role Management</h3></div>
+            <div class="card-body">
+                <div class="role-item"><span class="font-600">Administrator</span><span class="badge badge-info">3 users</span></div>
+                <div class="role-item"><span class="font-600">Doctor</span><span class="badge badge-success">28 users</span></div>
+                <div class="role-item"><span class="font-600">Nurse / Staff</span><span class="badge badge-gray">14 users</span></div>
+                <div class="role-item"><span class="font-600">Receptionist</span><span class="badge badge-gray">6 users</span></div>
+                <div class="role-item"><span class="font-600">Pharmacist</span><span class="badge badge-gray">4 users</span></div>
+            </div>
+        </div>
+    </div>
+</div>

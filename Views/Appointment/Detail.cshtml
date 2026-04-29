@@ -1,0 +1,39 @@
+@* Views/Appointment/Detail.cshtml *@
+@model Appointment
+@{
+    ViewData["Title"] = "Appointment Detail";
+    ViewData["PageTitle"] = "Appointments";
+}
+<div class="flex-between mb-20">
+    <a asp-action="Index" class="back-link">← Back</a>
+    <a asp-action="Edit" asp-route-id="@Model.Id" class="btn-secondary">✏️ Edit</a>
+</div>
+<div class="grid-2" style="align-items:start">
+    <div class="card">
+        <div class="card-header"><h3>Appointment Details</h3><span class="badge badge-@(Model.Status==AppointmentStatus.Confirmed?"success":Model.Status==AppointmentStatus.Completed?"gray":"warn")">@Model.Status</span></div>
+        <div class="card-body">
+            <div class="detail-grid">
+                <div class="detail-item"><span class="detail-label">Patient</span><span class="detail-value">@Model.Patient?.FullName</span></div>
+                <div class="detail-item"><span class="detail-label">Patient ID</span><span class="detail-value">@Model.Patient?.PatientCode</span></div>
+                <div class="detail-item"><span class="detail-label">Doctor</span><span class="detail-value">@Model.Doctor?.FullName</span></div>
+                <div class="detail-item"><span class="detail-label">Specialization</span><span class="detail-value">@Model.Doctor?.Specialization</span></div>
+                <div class="detail-item"><span class="detail-label">Department</span><span class="detail-value">@Model.Department</span></div>
+                <div class="detail-item"><span class="detail-label">Type</span><span class="detail-value"><span class="badge badge-info">@Model.Type</span></span></div>
+                <div class="detail-item"><span class="detail-label">Date</span><span class="detail-value">@Model.AppointmentDate.ToString("dd MMM yyyy")</span></div>
+                <div class="detail-item"><span class="detail-label">Time</span><span class="detail-value">@(DateTime.Today + Model.AppointmentTime).ToString("hh:mm tt")</span></div>
+                @if (!string.IsNullOrEmpty(Model.Notes))
+                {
+                    <div class="detail-item full"><span class="detail-label">Notes</span><span class="detail-value">@Model.Notes</span></div>
+                }
+                @if (!string.IsNullOrEmpty(Model.Diagnosis))
+                {
+                    <div class="detail-item full"><span class="detail-label">Diagnosis</span><span class="detail-value">@Model.Diagnosis</span></div>
+                }
+                @if (!string.IsNullOrEmpty(Model.Prescription))
+                {
+                    <div class="detail-item full"><span class="detail-label">Prescription</span><span class="detail-value">@Model.Prescription</span></div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
