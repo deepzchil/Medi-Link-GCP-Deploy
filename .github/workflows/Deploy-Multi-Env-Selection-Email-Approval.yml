@@ -42,16 +42,16 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore Dependencies
-        run: dotnet restore
+        run: dotnet restore HospitalMS.csproj
 
       - name: Build Solution
-        run: dotnet build --configuration Release --no-restore
+        run: dotnet build HospitalMS.csproj --configuration Release --no-restore
 
       - name: Run Tests
-        run: dotnet test --no-build || true
+        run: dotnet test HospitalMS.csproj --no-build || true
 
       - name: Publish App
-        run: dotnet publish -c Release -o publish
+        run: dotnet publish HospitalMS.csproj -c Release -o publish
 
       - name: Set Image Name
         id: meta
@@ -169,7 +169,8 @@ jobs:
             --region ${{ env.REGION }} \
             --platform managed \
             --allow-unauthenticated \
-            --port 8080
+            --port 8080 \
+            --timeout 300
 
 # =========================================
 # DEPLOY TEST
@@ -193,7 +194,8 @@ jobs:
             --region ${{ env.REGION }} \
             --platform managed \
             --allow-unauthenticated \
-            --port 8080
+            --port 8080 \
+            --timeout 300
 
 # =========================================
 # DEPLOY PROD
@@ -217,7 +219,8 @@ jobs:
             --region ${{ env.REGION }} \
             --platform managed \
             --allow-unauthenticated \
-            --port 8080
+            --port 8080 \
+            --timeout 300
 
 # =========================================
 # SUCCESS MAIL
