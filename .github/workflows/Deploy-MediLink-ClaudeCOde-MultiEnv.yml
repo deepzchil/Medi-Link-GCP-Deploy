@@ -75,19 +75,20 @@ jobs:
           docker build -t "${{ steps.meta.outputs.image_tag }}" .
           docker push "${{ steps.meta.outputs.image_tag }}"
 
+      # FIX: Use heredoc syntax instead of deprecated %0A/%0D/%25 escaping
       - name: Generate changelog
         id: changelog
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -z "$PREV_TAG" ]; then
-            LOG=$(git log --pretty=format:"- %s (%h)" -20)
+            LOG=$(git log --pretty=format:"<li>%s (%h)</li>" -20)
           else
-            LOG=$(git log "$PREV_TAG"..HEAD --pretty=format:"- %s (%h)")
+            LOG=$(git log "$PREV_TAG"..HEAD --pretty=format:"<li>%s (%h)</li>")
           fi
-          LOG="${LOG//'%'/'%25'}"
-          LOG="${LOG//$'\n'/'%0A'}"
-          LOG="${LOG//$'\r'/'%0D'}"
-          echo "changelog=$LOG" >> "$GITHUB_OUTPUT"
+          EOF_MARKER=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "changelog<<$EOF_MARKER" >> "$GITHUB_OUTPUT"
+          echo "$LOG"                   >> "$GITHUB_OUTPUT"
+          echo "$EOF_MARKER"            >> "$GITHUB_OUTPUT"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # JOB 2 — DEV deployment (no approval needed)
@@ -113,6 +114,8 @@ jobs:
           image: ${{ needs.build.outputs.image_tag }}
           region: ${{ env.REGION }}
           project_id: ${{ secrets.GCP_PROJECT_ID }}
+          env_vars_update_strategy: merge
+          secrets_update_strategy: merge
 
       - name: Send deployment notification to Lead
         uses: dawidd6/action-send-mail@v2
@@ -196,7 +199,7 @@ jobs:
 
     steps:
       - name: Send approval request email to Lead
-        uses: dawidd6/action-send-mail@v2
+        uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
           server_port: 587
@@ -206,7 +209,7 @@ jobs:
           to: ${{ env.LEAD_EMAIL }}
           cc: ${{ env.TEAM_CC }}
           subject: "⏳ [TEST] Approval Required — MediLink Deploy #${{ github.run_number }}"
-          content_type: text/html
+          #content_type: text/html
           body: |
             <!DOCTYPE html>
             <html>
@@ -293,6 +296,8 @@ jobs:
           image: ${{ needs.build.outputs.image_tag }}
           region: ${{ env.REGION }}
           project_id: ${{ secrets.GCP_PROJECT_ID }}
+          env_vars_update_strategy: merge
+          secrets_update_strategy: merge
 
       - name: Send post-deployment confirmation to Lead
         uses: dawidd6/action-send-mail@v2
@@ -374,7 +379,7 @@ jobs:
 
     steps:
       - name: Send approval request email to Lead
-        uses: dawidd6/action-send-mail@v2
+        uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
           server_port: 587
@@ -384,7 +389,7 @@ jobs:
           to: ${{ env.LEAD_EMAIL }}
           cc: ${{ env.TEAM_CC }}
           subject: "🔴 [PROD] Lead Approval Required — MediLink Deploy #${{ github.run_number }}"
-          content_type: text/html
+          #content_type: text/html
           body: |
             <!DOCTYPE html>
             <html>
@@ -462,7 +467,7 @@ jobs:
     needs: [build, notify-lead-prod]
     if: ${{ github.event.inputs.environment == 'prod' }}
     runs-on: ubuntu-latest
-    environment: prod-lead   # GitHub Env with Lead as Required Reviewer
+    environment: prod-lead      # GitHub Env with Lead as Required Reviewer
 
     steps:
       - name: Lead approved — proceeding to Manager notification
@@ -470,13 +475,13 @@ jobs:
 
   notify-manager-prod:
     name: 📧 Notify Manager — PROD final approval required
-    needs: [build, lead-approval-prod]       # ← only fires after lead gate passes
+    needs: [build, lead-approval-prod]      # ← only fires after lead gate passes
     if: ${{ github.event.inputs.environment == 'prod' }}
     runs-on: ubuntu-latest
 
     steps:
       - name: Send approval request email to Manager
-        uses: dawidd6/action-send-mail@v2
+        uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
           server_port: 587
@@ -486,7 +491,7 @@ jobs:
           to: ${{ env.MANAGER_EMAIL }}
           cc: ${{ env.LEAD_EMAIL }},${{ env.TEAM_CC }}
           subject: "🔴 [PROD] Manager Final Approval Required — MediLink Deploy #${{ github.run_number }}"
-          content_type: text/html
+          #content_type: text/html
           body: |
             <!DOCTYPE html>
             <html>
@@ -559,12 +564,13 @@ jobs:
             </html>
 
   # Gate 2 — Manager must approve before production deployment fires
+  # FIX: Added lead-approval-prod to needs so the full chain is explicit
   deploy-prod:
     name: 🚀 Deploy → PRODUCTION
-    needs: [build, notify-manager-prod]      # ← waits for manager notification (which itself waited for lead gate)
+    needs: [build, lead-approval-prod, notify-manager-prod]
     if: ${{ github.event.inputs.environment == 'prod' }}
     runs-on: ubuntu-latest
-    environment: production                 # GitHub Env with Manager as Required Reviewer
+    environment: production     # GitHub Env with Manager as Required Reviewer
 
     steps:
       - name: Authenticate to Google Cloud
@@ -579,9 +585,11 @@ jobs:
           image: ${{ needs.build.outputs.image_tag }}
           region: ${{ env.REGION }}
           project_id: ${{ secrets.GCP_PROJECT_ID }}
+          env_vars_update_strategy: merge
+          secrets_update_strategy: merge
 
       - name: Send production deployment success notification
-        uses: dawidd6/action-send-mail@v2
+        uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
           server_port: 587
@@ -591,7 +599,7 @@ jobs:
           to: ${{ env.MANAGER_EMAIL }}
           cc: ${{ env.LEAD_EMAIL }},${{ env.TEAM_CC }}
           subject: "✅ [PROD] MediLink is LIVE — Run #${{ github.run_number }}"
-          content_type: text/html
+          #content_type: text/html
           body: |
             <!DOCTYPE html>
             <html>
