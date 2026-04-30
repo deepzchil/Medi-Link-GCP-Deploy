@@ -322,7 +322,7 @@ jobs:
        run: echo "Waiting for Manager Approval"
 
 # ======================================================
-# JOB 6 - DEPLOY DEV
+# JOB 6 - DEPLOY TO DEV
 # ======================================================
   deploy-dev:
     if: ${{ github.event.inputs.environment == 'dev' }}
@@ -355,7 +355,7 @@ jobs:
              echo "service_url=$URL" >> $GITHUB_OUTPUT
 
 # ======================================================
-# JOB 7 - TEST
+# JOB 7 - DEPLOY TO TEST
 # ======================================================
   deploy-test:
     if: ${{ github.event.inputs.environment == 'test' }}
@@ -398,7 +398,7 @@ jobs:
           echo "service_url=$URL" >> $GITHUB_OUTPUT
 
 # ======================================================
-# JOB 8 - PROD
+# JOB 8 - DEPLOY TO PROD
 # ======================================================
   deploy-prod:
     if: ${{ github.event.inputs.environment == 'prod' }}
@@ -419,15 +419,16 @@ jobs:
 
       - name: Deploy Application to PROD
         run: |
-          echo "IMAGE VALUE: ${{ needs.build.outputs.image }}"
+          IMAGE="${{ needs.build.outputs.image }}"
+          echo "IMAGE VALUE: $IMAGE"
 
-          if [ -z "${{ needs.build.outputs.image }}" ]; then
+          if [ -z "$IMAGE" ]; then
             echo "ERROR: Image is empty"
             exit 1
           fi
 
           gcloud run deploy medilink-app-production \
-            --image ${{ needs.build.outputs.image }} \
+            --image $IMAGE \
             --region ${{ env.REGION }} \
             --platform managed \
             --allow-unauthenticated \
