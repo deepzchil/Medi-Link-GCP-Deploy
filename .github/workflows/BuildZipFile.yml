@@ -1,4 +1,4 @@
-name: Angular Dev Build + GCS Upload
+name: Polyglot CI/CD (Angular + .NET + GCS)
 
 on:
   workflow_dispatch:
@@ -13,89 +13,119 @@ on:
           - prod
 
 env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   BUCKET_NAME: medilink-artifacts
-  NODE_VERSION: 20
-  DOTNET_VERSION: 8.0.x
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
 
 jobs:
-  build-and-upload:
+
+# ==================================================
+# 1. AUTO DETECT PROJECT TYPE + PATH
+# ==================================================
+  detect:
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.environment == 'dev' }}
+    outputs:
+      app-type: ${{ steps.detect.outputs.app-type }}
+      app-path: ${{ steps.detect.outputs.app-path }}
 
     steps:
-      #########################################################
-      # CHECKOUT
-      #########################################################
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      #########################################################
-      # NODE SETUP (ANGULAR)
-      #########################################################
+      - name: Detect project type
+        id: detect
+        run: |
+          if find . -name "package.json" | grep -q package.json; then
+            echo "app-type=angular" >> $GITHUB_OUTPUT
+            APP_PATH=$(find . -name package.json | head -n 1 | xargs dirname)
+            echo "app-path=$APP_PATH" >> $GITHUB_OUTPUT
+
+          elif find . -name "*.csproj" | grep -q csproj; then
+            echo "app-type=dotnet" >> $GITHUB_OUTPUT
+            APP_PATH=$(find . -name "*.csproj" | head -n 1 | xargs dirname)
+            echo "app-path=$APP_PATH" >> $GITHUB_OUTPUT
+
+          else
+            echo "No supported project found"
+            exit 1
+          fi
+
+# ==================================================
+# 2. BUILD JOB (ANGULAR OR DOTNET)
+# ==================================================
+  build:
+    needs: detect
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+# ---------------- ANGULAR ----------------
       - name: Setup Node
+        if: needs.detect.outputs.app-type == 'angular'
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: 20
 
-      - name: Install Angular Dependencies
-        run: npm install
+      - name: Install Angular deps
+        if: needs.detect.outputs.app-type == 'angular'
+        working-directory: ${{ needs.detect.outputs.app-path }}
+        run: npm ci
 
-      - name: Build Angular App
-        run: npm run build -- --configuration production
+      - name: Build Angular
+        if: needs.detect.outputs.app-type == 'angular'
+        working-directory: ${{ needs.detect.outputs.app-path }}
+        run: npm run build -- --configuration=development
 
-      #########################################################
-      # .NET SETUP (BACKEND)
-      #########################################################
+# ---------------- .NET ----------------
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        if: needs.detect.outputs.app-type == 'dotnet'
+        uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          dotnet-version: 8.0.x
 
-      - name: Restore Dependencies
-        run: dotnet restore HospitalMS.csproj
+      - name: Restore .NET
+        if: needs.detect.outputs.app-type == 'dotnet'
+        working-directory: ${{ needs.detect.outputs.app-path }}
+        run: dotnet restore *.csproj
 
-      - name: Build .NET App
-        run: dotnet build HospitalMS.csproj --configuration Release --no-restore
+      - name: Build .NET
+        if: needs.detect.outputs.app-type == 'dotnet'
+        working-directory: ${{ needs.detect.outputs.app-path }}
+        run: dotnet build *.csproj --configuration Release --no-restore
 
-      - name: Publish .NET App
+# ==================================================
+# 3. PACKAGE OUTPUT
+# ==================================================
+      - name: Create ZIP
         run: |
-          dotnet publish HospitalMS.csproj \
-            --configuration Release \
-            --no-build \
-            --output ./publish \
-            /p:UseAppHost=false \
-            /p:SelfContained=false
+          mkdir release
 
-      #########################################################
-      # PACKAGE ARTIFACTS
-      #########################################################
-      - name: Create Release Package
-        run: |
-          mkdir -p release
-          cp -r dist/* release/ || true
-          cp -r publish/* release/ || true
+          if [ "${{ needs.detect.outputs.app-type }}" = "angular" ]; then
+            cp -r ${{ needs.detect.outputs.app-path }}/dist/* release/
+          else
+            cp -r ${{ needs.detect.outputs.app-path }}/bin release/
+          fi
+
           zip -r build.zip release
 
-      #########################################################
-      # AUTH GCP
-      #########################################################
+# ==================================================
+# 4. AUTH TO GCP
+# ==================================================
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Setup GCloud SDK
+      - name: Setup GCloud
         uses: google-github-actions/setup-gcloud@v2
 
-      #########################################################
-      # UPLOAD TO GCS
-      #########################################################
-      - name: Upload ZIP to GCS
+# ==================================================
+# 5. UPLOAD TO GCS (VERSIONED)
+# ==================================================
+      - name: Upload to GCS
         run: |
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
           ENV=${{ github.event.inputs.environment }}
 
           gsutil cp build.zip gs://$BUCKET_NAME/$ENV/build_$TIMESTAMP.zip
 
-          echo "Uploaded to: gs://$BUCKET_NAME/$ENV/build_$TIMESTAMP.zip"
+          echo "Uploaded to gs://$BUCKET_NAME/$ENV/build_$TIMESTAMP.zip"
