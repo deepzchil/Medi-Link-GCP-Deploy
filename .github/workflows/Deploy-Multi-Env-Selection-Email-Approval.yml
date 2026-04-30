@@ -154,10 +154,20 @@ jobs:
       - name: Build & Push Docker Image
         id: meta
         run: |
-          IMAGE=us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.run_number }}
+          set -e
+
+          IMAGE="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.run_number }}"
+
+          echo "Building image: $IMAGE"
+
           docker build -t $IMAGE .
           docker push $IMAGE
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+
+      - name: Verify Image Output
+        run: echo "BUILD OUTPUT IMAGE = ${{ steps.meta.outputs.image }}"
 
 # ======================================================
 # JOB 2 - LEAD APPROVAL EMAIL
@@ -423,7 +433,7 @@ jobs:
           echo "IMAGE VALUE: $IMAGE"
 
           if [ -z "$IMAGE" ]; then
-            echo "ERROR: Image is empty"
+            echo "❌ ERROR: Image is empty from build job"
             exit 1
           fi
 
@@ -434,6 +444,9 @@ jobs:
             --allow-unauthenticated \
             --port 8080 \
             --timeout 300
+
+      - name: Debug Image from Build
+        run: echo "DEPLOY RECEIVED IMAGE = ${{ needs.build.outputs.image }}"
 
       - name: Get Service URL
         id: url
