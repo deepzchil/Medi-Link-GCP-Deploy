@@ -67,7 +67,7 @@ jobs:
       - name: Set image tag
         id: meta
         run: |
-          TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
+          TAG="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
           echo "image_tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Build & push Docker image
@@ -112,7 +112,7 @@ jobs:
           service: medilink-app-dev
           image: ${{ needs.build.outputs.image_tag }}
           region: ${{ env.REGION }}
-          project_id: ${{ env.PROJECT_ID }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Send deployment notification to Lead
         uses: dawidd6/action-send-mail@v2
@@ -292,7 +292,7 @@ jobs:
           service: medilink-app-test
           image: ${{ needs.build.outputs.image_tag }}
           region: ${{ env.REGION }}
-          project_id: ${{ env.PROJECT_ID }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Send post-deployment confirmation to Lead
         uses: dawidd6/action-send-mail@v2
@@ -578,7 +578,7 @@ jobs:
           service: medilink-app-production
           image: ${{ needs.build.outputs.image_tag }}
           region: ${{ env.REGION }}
-          project_id: ${{ env.PROJECT_ID }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Send production deployment success notification
         uses: dawidd6/action-send-mail@v2
