@@ -1,20 +1,24 @@
-name: Deploy-Multi-Env-Approval-Final
+name: Dynamic CI/CD Pipeline (Multi-Env)
 
 on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Choose environment"
+        description: 'Select Environment'
         required: true
+        default: 'dev'
         type: choice
-        options: [dev, test, prod]
+        options:
+          - dev
+          - test
+          - prod
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: us-central1
-  REPOSITORY: hospital-repo
-  IMAGE_NAME: medilink-app
-
+  DOTNET_VERSION: 8.0.x
+  BASE_SERVICE_NAME: medilink-app
+  ARTIFACT_REPO: hospital-repo
   LEAD_EMAIL: ${{ vars.LEAD_EMAIL }}
   LEAD_NAME: ${{ vars.LEAD_NAME }}
   MANAGER_EMAIL: ${{ vars.MANAGER_EMAIL }}
@@ -23,250 +27,180 @@ env:
 
 permissions:
   contents: read
+  actions: read
+  issues: read
   id-token: write
 
 jobs:
-
-# ================= BUILD =================
+  # -------------------------------------------------
+  # JOB 1 - BUILD + FETCH ISSUES
+  # -------------------------------------------------
   build:
+    name: Build & Package
     runs-on: ubuntu-latest
     outputs:
-      image: ${{ steps.meta.outputs.image }}
-      commit_message: ${{ steps.commit.outputs.commit_message }}
       changed_files: ${{ steps.diff.outputs.changed_files }}
-      change_stats: ${{ steps.stats.outputs.change_stats }}
-      code_changes: ${{ steps.patch.outputs.code_changes }}
+      commit_message: ${{ steps.commit.outputs.commit_message }}
       resolved_issues: ${{ steps.issues.outputs.resolved_issues }}
-
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout Code
+        uses: actions/checkout@v5
         with:
-          fetch-depth: 2
+          fetch-depth: 5
 
-      - id: commit
+      - name: Read Metadata
+        id: commit
         run: |
-          echo "commit_message<<EOF" >> $GITHUB_OUTPUT
-          git log -1 --pretty=%B >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "commit_message=$(git log -1 --pretty=%B | tr '\n' ' ')" >> $GITHUB_OUTPUT
 
-      - id: diff
+      - name: Detect Changes
+        id: diff
         run: |
           echo "changed_files<<EOF" >> $GITHUB_OUTPUT
-          git diff --name-only HEAD~1 HEAD || true
+          git diff --name-only HEAD~1 HEAD >> $GITHUB_OUTPUT || true
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - id: stats
+      - name: Fixed GitHub Issues
+        id: issues
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            const commits = execSync("git log -10 --pretty=%B").toString();
+            const matches = [...commits.matchAll(/#(\d+)/g)];
+            const uniqueIssues = [...new Set(matches.map(m => m[1]))];
+            let output = uniqueIssues.length > 0 ? "" : "No linked issues.";
+            for (const issueNumber of uniqueIssues) {
+               try {
+                 const issue = await github.rest.issues.get({
+                   owner: context.repo.owner,
+                   repo: context.repo.repo,
+                   issue_number: parseInt(issueNumber)
+                 });
+                 output += `• #${issueNumber} - ${issue.data.title}\n`;
+               } catch { output += `• #${issueNumber} - Private/Deleted\n`; }
+            }
+            core.setOutput("resolved_issues", output);
+
+      - name: Setup & Build .NET
         run: |
-          echo "change_stats<<EOF" >> $GITHUB_OUTPUT
-          git diff --stat HEAD~1 HEAD || true
-          echo "EOF" >> $GITHUB_OUTPUT
+          dotnet restore HospitalMS.csproj
+          dotnet publish HospitalMS.csproj -c Release -o publish
 
-      - id: patch
-        run: |
-          echo "code_changes<<EOF" >> $GITHUB_OUTPUT
-          git diff --stat HEAD~1 HEAD || true
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - id: issues
-        run: |
-          echo "resolved_issues<<EOF" >> $GITHUB_OUTPUT
-          echo "No linked issues found."
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - uses: google-github-actions/auth@v3
+      - name: Auth & Push to GCP
+        uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - uses: google-github-actions/setup-gcloud@v3
-
-      - run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
-
-      - id: meta
+      - name: Docker Ops
         run: |
-          IMAGE="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.run_number }}"
-          docker build -t $IMAGE .
-          docker push $IMAGE
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+          docker build -t us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.BASE_SERVICE_NAME }}:latest .
+          docker push us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.BASE_SERVICE_NAME }}:latest
 
-# ================= DEV =================
-  deploy-dev:
-    if: ${{ github.event.inputs.environment == 'dev' }}
+  # -------------------------------------------------
+  # JOB 2 - LEAD APPROVAL EMAIL (Required for Test & Prod)
+  # -------------------------------------------------
+  lead-mail:
+    name: Send Lead Approval Mail
     needs: build
-    runs-on: ubuntu-latest
-    outputs:
-      service_url: ${{ steps.url.outputs.service_url }}
-
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - uses: google-github-actions/setup-gcloud@v3
-
-      - run: |
-          gcloud run deploy medilink-app-dev \
-            --image ${{ needs.build.outputs.image }} \
-            --region ${{ env.REGION }} \
-            --platform managed \
-            --allow-unauthenticated
-
-      - id: url
-        run: |
-          URL=$(gcloud run services describe medilink-app-dev --region ${{ env.REGION }} --format='value(status.url)')
-          echo "service_url=$URL" >> $GITHUB_OUTPUT
-
-# ================= TEST =================
-  send-lead-mail-test:
-    if: ${{ github.event.inputs.environment == 'test' }}
-    needs: build
+    if: github.event.inputs.environment == 'test' || github.event.inputs.environment == 'prod'
     runs-on: ubuntu-latest
     steps:
-      - uses: dawidd6/action-send-mail@v5
+      - name: Send Mail
+        uses: dawidd6/action-send-mail@v5
         with:
           server_address: smtp.gmail.com
           server_port: 587
           username: ${{ secrets.EMAIL_USERNAME }}
           password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: "TEST Approval Required"
+          subject: Approval Required [${{ github.event.inputs.environment }}] | ${{ github.repository }}
           to: ${{ env.LEAD_EMAIL }}
-          cc: ${{ env.TEAM_CC }}
-          from: GitHub Actions
-          html_body: |
-            <h3>TEST Approval Required</h3>
-            <pre>${{ needs.build.outputs.resolved_issues }}</pre>
+          cc: ${{ github.event.inputs.environment == 'prod' && env.TEAM_CC || '' }}
+          from: ${{ secrets.EMAIL_USERNAME }}
+          html_body: "Please approve deployment for ${{ github.event.inputs.environment }} environment."
 
-  lead-approval-test:
-    if: ${{ github.event.inputs.environment == 'test' }}
-    needs: send-lead-mail-test
+  # -------------------------------------------------
+  # JOB 3 - LEAD APPROVAL GATE
+  # -------------------------------------------------
+  lead-approval:
+    name: Lead Approval Gate
+    needs: lead-mail
     runs-on: ubuntu-latest
-    environment:
-      name: lead-approval
+    environment: lead-approval # Ensure this environment exists in GitHub Settings
     steps:
-      - run: echo "Waiting for approval"
+      - run: echo "Lead Approved"
 
-  deploy-test:
-    if: ${{ github.event.inputs.environment == 'test' }}
-    needs: [build, lead-approval-test]
-    runs-on: ubuntu-latest
-    outputs:
-      service_url: ${{ steps.url.outputs.service_url }}
-
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - uses: google-github-actions/setup-gcloud@v3
-
-      - run: |
-          gcloud run deploy medilink-app-test \
-            --image ${{ needs.build.outputs.image }} \
-            --region ${{ env.REGION }} \
-            --platform managed \
-            --allow-unauthenticated
-
-      - id: url
-        run: |
-          URL=$(gcloud run services describe medilink-app-test --region ${{ env.REGION }} --format='value(status.url)')
-          echo "service_url=$URL" >> $GITHUB_OUTPUT
-
-# ================= PROD =================
-  send-lead-mail-prod:
-    if: ${{ github.event.inputs.environment == 'prod' }}
-    needs: build
+  # -------------------------------------------------
+  # JOB 4 - MANAGER APPROVAL EMAIL (Prod Only)
+  # -------------------------------------------------
+  manager-mail:
+    name: Send Manager Approval Mail
+    needs: [lead-approval, build]
+    if: github.event.inputs.environment == 'prod'
     runs-on: ubuntu-latest
     steps:
-      - uses: dawidd6/action-send-mail@v5
+      - name: Send Mail
+        uses: dawidd6/action-send-mail@v5
         with:
           server_address: smtp.gmail.com
           server_port: 587
           username: ${{ secrets.EMAIL_USERNAME }}
           password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: "PROD Lead Approval Required"
-          to: ${{ env.LEAD_EMAIL }}
-          cc: ${{ env.TEAM_CC }}
-          from: GitHub Actions
-          html_body: "<h3>Production Approval Required</h3>"
-
-  lead-approval-prod:
-    if: ${{ github.event.inputs.environment == 'prod' }}
-    needs: send-lead-mail-prod
-    runs-on: ubuntu-latest
-    environment:
-      name: lead-approval
-    steps:
-      - run: echo "Lead approval"
-
-  send-manager-mail:
-    if: ${{ github.event.inputs.environment == 'prod' }}
-    needs: lead-approval-prod
-    runs-on: ubuntu-latest
-    steps:
-      - uses: dawidd6/action-send-mail@v5
-        with:
-          server_address: smtp.gmail.com
-          server_port: 587
-          username: ${{ secrets.EMAIL_USERNAME }}
-          password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: "Manager Approval Required"
+          subject: Manager Approval Required [Production]
           to: ${{ env.MANAGER_EMAIL }}
-          from: GitHub Actions
-          html_body: "<h3>Manager Approval Required</h3>"
+          from: ${{ secrets.EMAIL_USERNAME }}
+          html_body: "Lead has approved. Manager approval required for Production."
 
+  # -------------------------------------------------
+  # JOB 5 - MANAGER APPROVAL GATE
+  # -------------------------------------------------
   manager-approval:
-    if: ${{ github.event.inputs.environment == 'prod' }}
-    needs: send-manager-mail
+    name: Manager Approval Gate
+    needs: manager-mail
     runs-on: ubuntu-latest
-    environment:
-      name: production
+    environment: production # Ensure this environment exists in GitHub Settings
     steps:
-      - run: echo "Manager approval"
+      - run: echo "Manager Approved"
 
-  deploy-prod:
-    if: ${{ github.event.inputs.environment == 'prod' }}
-    needs: [build, manager-approval]
+  # -------------------------------------------------
+  # JOB 6 - DEPLOYMENT (Logic handles dependency)
+  # -------------------------------------------------
+  deploy:
+    name: Deploy to Cloud Run
     runs-on: ubuntu-latest
-    outputs:
-      service_url: ${{ steps.url.outputs.service_url }}
+
+    needs:
+      - build
+      - lead-approval
+      - manager-approval
+
+    if: |
+      github.event.inputs.environment == 'dev' ||
+      (github.event.inputs.environment == 'test' && needs.lead-approval.result == 'success') ||
+      (github.event.inputs.environment == 'prod' && needs.manager-approval.result == 'success')
 
     steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+    - name: Authenticate to GCP
+      uses: google-github-actions/auth@v3
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - uses: google-github-actions/setup-gcloud@v3
+    - name: Deploy to Cloud Run
+      run: |
+        SERVICE_NAME="${{ env.BASE_SERVICE_NAME }}-${{ github.event.inputs.environment }}"
 
-      - run: |
-          gcloud run deploy medilink-app-production \
-            --image ${{ needs.build.outputs.image }} \
-            --region ${{ env.REGION }} \
-            --platform managed \
-            --allow-unauthenticated
+        # Force production naming
+        if [ "${{ github.event.inputs.environment }}" = "prod" ]; then
+          SERVICE_NAME="medilink-app-production"
+        fi
 
-      - id: url
-        run: |
-          URL=$(gcloud run services describe medilink-app-production --region ${{ env.REGION }} --format='value(status.url)')
-          echo "service_url=$URL" >> $GITHUB_OUTPUT
+        echo "Deploying to service: $SERVICE_NAME"
 
-# ================= SUCCESS =================
-  success-mail:
-    if: success()
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Deployment Successful"
-
-# ================= FAILURE =================
-  failure-mail:
-    if: failure()
-    runs-on: ubuntu-latest
-    steps:
-      - uses: dawidd6/action-send-mail@v5
-        with:
-          server_address: smtp.gmail.com
-          server_port: 587
-          username: ${{ secrets.EMAIL_USERNAME }}
-          password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: "Deployment Failed"
-          to: ${{ env.MANAGER_EMAIL }}
-          from: GitHub Actions
-          html_body: "<h2 style='color:red;'>Deployment Failed</h2>"
+        gcloud run deploy $SERVICE_NAME \
+          --image us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.BASE_SERVICE_NAME }}:latest \
+          --region ${{ env.REGION }} \
+          --platform managed \
+          --allow-unauthenticated \
+          --port 8080 \
+          --timeout 300
