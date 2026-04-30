@@ -17,6 +17,7 @@ env:
   REGION: us-central1
   SERVICE_NAME: medilink-app
   ARTIFACT_REPO: hospital-repo
+  DOTNET_VERSION: 8.0.x
 
   LEAD_EMAIL: ${{ vars.LEAD_EMAIL }}
   LEAD_NAME: ${{ vars.LEAD_NAME }}
@@ -36,6 +37,7 @@ jobs:
       commit_message: ${{ steps.commit.outputs.msg }}
       issues: ${{ steps.issues.outputs.list }}
       changes: ${{ steps.changes.outputs.files }}
+      image: ${{ steps.image.outputs.tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -55,11 +57,58 @@ jobs:
         id: issues
         run: |
           ISSUES=$(curl -s \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/issues?state=closed \
-            | jq -r '.[].title' | head -10 | sed 's/$/<br>/')
+          -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/${{ github.repository }}/issues?state=closed" \
+          | jq -r '.[].title' | head -10 | sed 's/$/<br>/')
 
-          echo "list=$ISSUES" >> $GITHUB_OUTPUT
+          {
+          echo "list<<EOF"
+          echo "$ISSUES"
+          echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore HospitalMS.csproj
+
+      - name: Build
+        run: dotnet build HospitalMS.csproj --configuration Release --no-restore
+
+      - name: Publish
+        run: dotnet publish HospitalMS.csproj --configuration Release --no-build -o publish
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Build Docker Image
+        run: |
+          docker build \
+          -t us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE_NAME }}:latest .
+
+      - name: Push Docker Image
+        run: |
+          docker push \
+          us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE_NAME }}:latest
+
+
+      - name: Set Image Output
+        id: image
+        run: |
+          IMAGE="us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE_NAME }}:latest"
+          echo "tag=$IMAGE" >> $GITHUB_OUTPUT
+        
 
 #########################################################
 # JOB 2 - DEV DEPLOY (NO APPROVAL)
@@ -74,10 +123,28 @@ jobs:
       service_url: ${{ steps.deploy.outputs.url }}
 
     steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
       - name: Deploy to DEV
         id: deploy
         run: |
-          URL="https://medilink-app-dev.run.app"
+          gcloud run deploy medilink-app-dev \
+            --image ${{ needs.build.outputs.image }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --quiet
+
+          URL=$(gcloud run services describe medilink-app-dev \
+            --region ${{ env.REGION }} \
+            --format='value(status.url)')
+
           echo "url=$URL" >> $GITHUB_OUTPUT
 
 #########################################################
@@ -93,10 +160,28 @@ jobs:
       service_url: ${{ steps.deploy.outputs.url }}
 
     steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
       - name: Deploy to TEST
         id: deploy
         run: |
-          URL="https://medilink-app-test.run.app"
+          gcloud run deploy medilink-app-test \
+            --image ${{ needs.build.outputs.image }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --quiet
+
+          URL=$(gcloud run services describe medilink-app-test \
+            --region ${{ env.REGION }} \
+            --format='value(status.url)')
+
           echo "url=$URL" >> $GITHUB_OUTPUT
 
 #########################################################
@@ -126,17 +211,37 @@ jobs:
 #########################################################
   deploy-prod:
     if: github.event.inputs.environment == 'prod'
-    needs: prod-manager-approval
+    needs:
+      - build
+      - prod-manager-approval
     runs-on: ubuntu-latest
 
     outputs:
       service_url: ${{ steps.deploy.outputs.url }}
 
     steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
       - name: Deploy to PROD
         id: deploy
         run: |
-          URL="https://medilink-app-production.run.app"
+          gcloud run deploy medilink-app-production \
+            --image ${{ needs.build.outputs.image }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --quiet
+
+          URL=$(gcloud run services describe medilink-app-production \
+            --region ${{ env.REGION }} \
+            --format='value(status.url)')
+
           echo "url=$URL" >> $GITHUB_OUTPUT
 
 #########################################################
