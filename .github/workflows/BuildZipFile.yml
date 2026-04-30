@@ -119,13 +119,15 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
 # ==================================================
-# 5. UPLOAD TO GCS (VERSIONED)
+# 5. UPLOAD TO GCS (ENVIRONMENT NAMED ZIP)
 # ==================================================
       - name: Upload to GCS
         run: |
-          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-          ENV=${{ github.event.inputs.environment }}
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+            ENV=${{ github.event.inputs.environment }}
 
-          gsutil cp build.zip gs://$BUCKET_NAME/$ENV/build_$TIMESTAMP.zip
+            ZIP_NAME="build_${ENV}_${TIMESTAMP}.zip"
 
-          echo "Uploaded to gs://$BUCKET_NAME/$ENV/build_$TIMESTAMP.zip"
+            gsutil cp build.zip gs://$BUCKET_NAME/$ENV/$ZIP_NAME
+
+            echo "Uploaded to gs://$BUCKET_NAME/$ENV/$ZIP_NAME"
