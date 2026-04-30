@@ -47,6 +47,15 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      - name: Restore
+        run: dotnet restore HospitalMS.csproj
+
+      - name: Build
+        run: dotnet build HospitalMS.csproj --configuration Release --no-restore
+
+      - name: Publish
+        run: dotnet publish HospitalMS.csproj --configuration Release --no-build -o publish
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
