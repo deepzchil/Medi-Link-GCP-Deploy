@@ -444,7 +444,7 @@ jobs:
 # JOB 9 - SUCCESS MAIL
 # ======================================================
   success-mail:
-    if: always()
+    if: ${{ success() }}
     needs: [deploy-dev, deploy-test, deploy-prod, build]
     name: Send Deployment Success Mail
     runs-on: ubuntu-latest
@@ -516,7 +516,7 @@ jobs:
 # ======================================================
   failure-mail:
     name: Send Deployment Failure Mail
-    if: failure()
+    if: ${{ failure() }}
     needs: [deploy-dev, deploy-test, deploy-prod, build]
     runs-on: ubuntu-latest
     steps:
