@@ -15,6 +15,8 @@ on:
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   BUCKET_NAME: medilink-artifacts
+  NODE_VERSION: 20
+  DOTNET_VERSION: 8.0.x
 
 jobs:
   build-and-upload:
@@ -22,29 +24,62 @@ jobs:
     if: ${{ github.event.inputs.environment == 'dev' }}
 
     steps:
+      #########################################################
+      # CHECKOUT
+      #########################################################
       - name: Checkout code
         uses: actions/checkout@v4
 
+      #########################################################
+      # NODE SETUP (ANGULAR)
+      #########################################################
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install dependencies
+      - name: Install Angular Dependencies
         run: npm install
 
-      - name: Build Angular
-        run: npm run build -- --configuration=development
+      - name: Build Angular App
+        run: npm run build -- --configuration production
 
-      - name: Create ZIP
+      #########################################################
+      # .NET SETUP (BACKEND)
+      #########################################################
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore Dependencies
+        run: dotnet restore HospitalMS.csproj
+
+      - name: Build .NET App
+        run: dotnet build HospitalMS.csproj --configuration Release --no-restore
+
+      - name: Publish .NET App
         run: |
-          mkdir release
-          cp -r dist/* release/
+          dotnet publish HospitalMS.csproj \
+            --configuration Release \
+            --no-build \
+            --output ./publish \
+            /p:UseAppHost=false \
+            /p:SelfContained=false
+
+      #########################################################
+      # PACKAGE ARTIFACTS
+      #########################################################
+      - name: Create Release Package
+        run: |
+          mkdir -p release
+          cp -r dist/* release/ || true
+          cp -r publish/* release/ || true
           zip -r build.zip release
 
-      # ==========================
-      # AUTH TO GOOGLE CLOUD
-      # ==========================
+      #########################################################
+      # AUTH GCP
+      #########################################################
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
@@ -53,9 +88,9 @@ jobs:
       - name: Setup GCloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      # ==========================
-      # UPLOAD TO GCS "FOLDER"
-      # ==========================
+      #########################################################
+      # UPLOAD TO GCS
+      #########################################################
       - name: Upload ZIP to GCS
         run: |
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
