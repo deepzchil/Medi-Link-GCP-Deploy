@@ -1,4 +1,4 @@
-name: Enterprise Multi-Env CI/CD Pipeline
+name: Enterprise Multi-Env CI/CD Pipeline to GCP
 
 on:
   workflow_dispatch:

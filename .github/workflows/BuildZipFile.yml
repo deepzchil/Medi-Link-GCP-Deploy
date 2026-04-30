@@ -1,0 +1,66 @@
+name: Angular Dev Build + GCS Upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Select environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  BUCKET_NAME: medilink-artifacts
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.environment == 'dev' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Angular
+        run: npm run build -- --configuration=development
+
+      - name: Create ZIP
+        run: |
+          mkdir release
+          cp -r dist/* release/
+          zip -r build.zip release
+
+      # ==========================
+      # AUTH TO GOOGLE CLOUD
+      # ==========================
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup GCloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ==========================
+      # UPLOAD TO GCS "FOLDER"
+      # ==========================
+      - name: Upload ZIP to GCS
+        run: |
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          ENV=${{ github.event.inputs.environment }}
+
+          gsutil cp build.zip gs://$BUCKET_NAME/$ENV/build_$TIMESTAMP.zip
+
+          echo "Uploaded to: gs://$BUCKET_NAME/$ENV/build_$TIMESTAMP.zip"
