@@ -119,15 +119,44 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
 # ==================================================
-# 5. UPLOAD TO GCS (ENVIRONMENT NAMED ZIP)
+# 5. UPLOAD TO GCS (ENVIRONMENT NAMED ZIP + RETENTION)
 # ==================================================
       - name: Upload to GCS
         run: |
-            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-            ENV=${{ github.event.inputs.environment }}
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          ENV=${{ github.event.inputs.environment }}
 
-            ZIP_NAME="build_${ENV}_${TIMESTAMP}.zip"
+          ZIP_NAME="build_${ENV}_${TIMESTAMP}.zip"
+          GCS_PATH="gs://$BUCKET_NAME/$ENV"
 
-            gsutil cp build.zip gs://$BUCKET_NAME/$ENV/$ZIP_NAME
+          echo "Uploading: $ZIP_NAME"
 
-            echo "Uploaded to gs://$BUCKET_NAME/$ENV/$ZIP_NAME"
+          # Upload new build
+          gsutil cp build.zip $GCS_PATH/$ZIP_NAME
+
+          echo "Uploaded to $GCS_PATH/$ZIP_NAME"
+
+          ##################################################
+          # RETENTION POLICY - KEEP ONLY LAST 5 BUILDS
+          ##################################################
+          echo "Applying retention policy (keep last 5 builds)..."
+
+          FILES=$(gsutil ls $GCS_PATH/ 2>/dev/null | sort)
+
+          COUNT=$(echo "$FILES" | wc -l | tr -d ' ')
+
+          echo "Total files in $ENV: $COUNT"
+
+          if [ "$COUNT" -gt 5 ]; then
+              DELETE_COUNT=$((COUNT - 5))
+
+              echo "Deleting $DELETE_COUNT old builds..."
+
+              echo "$FILES" | head -n $DELETE_COUNT | while read file
+              do
+                echo "Deleting: $file"
+                gsutil rm "$file"
+              done
+          else
+              echo "Retention OK - no cleanup needed"
+          fi
