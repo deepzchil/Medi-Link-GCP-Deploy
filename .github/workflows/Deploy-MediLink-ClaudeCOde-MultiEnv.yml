@@ -1,0 +1,647 @@
+name: Deploy MediLink App on Multi Env
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target deployment environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - prod
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: us-central1
+  DOTNET_VERSION: 8.0.x
+  SERVICE_NAME: medilink-app
+  ARTIFACT_REPO: hospital-repo
+  LEAD_EMAIL: ${{ vars.LEAD_EMAIL }}
+  LEAD_NAME: ${{ vars.LEAD_NAME }}
+  MANAGER_EMAIL: ${{ vars.MANAGER_EMAIL }}
+  MANAGER_NAME: ${{ vars.MANAGER_NAME }}
+  TEAM_CC: ${{ vars.TEAM_CC }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 1 — Build & push Docker image to Artifact Registry
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  build:
+    name: 🔨 Build & Push Image
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Set image tag
+        id: meta
+        run: |
+          TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.ARTIFACT_REPO }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
+          echo "image_tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push Docker image
+        run: |
+          docker build -t "${{ steps.meta.outputs.image_tag }}" .
+          docker push "${{ steps.meta.outputs.image_tag }}"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            LOG=$(git log --pretty=format:"- %s (%h)" -20)
+          else
+            LOG=$(git log "$PREV_TAG"..HEAD --pretty=format:"- %s (%h)")
+          fi
+          LOG="${LOG//'%'/'%25'}"
+          LOG="${LOG//$'\n'/'%0A'}"
+          LOG="${LOG//$'\r'/'%0D'}"
+          echo "changelog=$LOG" >> "$GITHUB_OUTPUT"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 2 — DEV deployment (no approval needed)
+#   Service: medilink-app-dev
+# ─────────────────────────────────────────────────────────────────────────────
+  deploy-dev:
+    name: 🚀 Deploy → DEV
+    needs: build
+    if: ${{ github.event.inputs.environment == 'dev' }}
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Deploy to Cloud Run (dev) — medilink-app-dev
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: medilink-app-dev
+          image: ${{ needs.build.outputs.image_tag }}
+          region: ${{ env.REGION }}
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Send deployment notification to Lead
+        uses: dawidd6/action-send-mail@v2
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          from: ${{ secrets.EMAIL_USERNAME }}
+          to: ${{ env.LEAD_EMAIL }}
+          cc: ${{ env.TEAM_CC }}
+          subject: "✅ [DEV] MediLink deployed successfully — ${{ github.run_number }}"
+          content_type: text/html
+          body: |
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <style>
+                body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6f9; margin: 0; padding: 0; }
+                .wrapper { max-width: 640px; margin: 32px auto; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+                .header { background: linear-gradient(135deg, #1a73e8, #0d47a1); padding: 28px 32px; color: #fff; }
+                .header h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.3px; }
+                .header p  { margin: 6px 0 0; opacity: 0.85; font-size: 14px; }
+                .badge { display: inline-block; background: #e8f5e9; color: #2e7d32; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px; }
+                .section { padding: 24px 32px; }
+                .section h2 { font-size: 16px; color: #1a1a2e; margin: 0 0 14px; border-bottom: 2px solid #e8eaf6; padding-bottom: 8px; }
+                .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+                .meta-item { background: #f8f9ff; border-radius: 8px; padding: 12px 14px; }
+                .meta-item .label { font-size: 11px; text-transform: uppercase; color: #7986cb; font-weight: 600; letter-spacing: 0.5px; }
+                .meta-item .value { font-size: 14px; color: #1a1a2e; margin-top: 4px; font-weight: 500; }
+                .changelog { background: #f8f9ff; border-left: 4px solid #1a73e8; border-radius: 0 8px 8px 0; padding: 14px 18px; }
+                .changelog ul { margin: 0; padding-left: 20px; }
+                .changelog li { font-size: 14px; color: #333; line-height: 1.7; }
+                .footer { background: #f4f6f9; padding: 16px 32px; text-align: center; font-size: 12px; color: #9e9e9e; }
+                .env-pill { background: #e3f2fd; color: #1565c0; font-weight: 700; padding: 2px 10px; border-radius: 12px; font-size: 13px; }
+              </style>
+            </head>
+            <body>
+              <div class="wrapper">
+                <div class="header">
+                  <h1>🚀 MediLink — Deployment Report</h1>
+                  <p>Automated notification from GitHub Actions</p>
+                </div>
+                <div class="section">
+                  <span class="badge">✅ Success</span>&nbsp;&nbsp;<span class="env-pill">DEV</span>
+                  <br><br>
+                  <div class="meta-grid">
+                    <div class="meta-item"><div class="label">Environment</div><div class="value">Development</div></div>
+                    <div class="meta-item"><div class="label">Cloud Run Service</div><div class="value">medilink-app-dev</div></div>
+                    <div class="meta-item"><div class="label">Triggered by</div><div class="value">${{ github.actor }}</div></div>
+                    <div class="meta-item"><div class="label">Run #</div><div class="value">${{ github.run_number }}</div></div>
+                    <div class="meta-item"><div class="label">Branch</div><div class="value">${{ github.ref_name }}</div></div>
+                    <div class="meta-item"><div class="label">Commit</div><div class="value">${{ github.sha }}</div></div>
+                  </div>
+                </div>
+                <div class="section">
+                  <h2>📋 Changes Included in This Release</h2>
+                  <div class="changelog">
+                    <ul>
+                      ${{ needs.build.outputs.changelog }}
+                    </ul>
+                  </div>
+                </div>
+                <div class="footer">
+                  MediLink CI/CD · GitHub Actions · ${{ github.repository }}
+                </div>
+              </div>
+            </body>
+            </html>
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 3 — TEST: notify lead → wait for approval → deploy
+#   Service: medilink-app-test
+# ─────────────────────────────────────────────────────────────────────────────
+  notify-lead-test:
+    name: 📧 Notify Lead — TEST approval required
+    needs: build
+    if: ${{ github.event.inputs.environment == 'test' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send approval request email to Lead
+        uses: dawidd6/action-send-mail@v2
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          from: ${{ secrets.EMAIL_USERNAME }}
+          to: ${{ env.LEAD_EMAIL }}
+          cc: ${{ env.TEAM_CC }}
+          subject: "⏳ [TEST] Approval Required — MediLink Deploy #${{ github.run_number }}"
+          content_type: text/html
+          body: |
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <style>
+                body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6f9; margin: 0; padding: 0; }
+                .wrapper { max-width: 640px; margin: 32px auto; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+                .header { background: linear-gradient(135deg, #f57c00, #e65100); padding: 28px 32px; color: #fff; }
+                .header h1 { margin: 0; font-size: 22px; font-weight: 700; }
+                .header p  { margin: 6px 0 0; opacity: 0.85; font-size: 14px; }
+                .badge { display: inline-block; background: #fff3e0; color: #e65100; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.5px; }
+                .section { padding: 24px 32px; }
+                .section h2 { font-size: 16px; color: #1a1a2e; margin: 0 0 14px; border-bottom: 2px solid #ffe0b2; padding-bottom: 8px; }
+                .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+                .meta-item { background: #fff8f0; border-radius: 8px; padding: 12px 14px; }
+                .meta-item .label { font-size: 11px; text-transform: uppercase; color: #fb8c00; font-weight: 600; letter-spacing: 0.5px; }
+                .meta-item .value { font-size: 14px; color: #1a1a2e; margin-top: 4px; font-weight: 500; }
+                .changelog { background: #fff8f0; border-left: 4px solid #f57c00; border-radius: 0 8px 8px 0; padding: 14px 18px; }
+                .changelog ul { margin: 0; padding-left: 20px; }
+                .changelog li { font-size: 14px; color: #333; line-height: 1.7; }
+                .cta { text-align: center; padding: 8px 32px 28px; }
+                .btn { display: inline-block; background: #f57c00; color: #fff; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 700; font-size: 15px; letter-spacing: 0.3px; }
+                .footer { background: #f4f6f9; padding: 16px 32px; text-align: center; font-size: 12px; color: #9e9e9e; }
+                .env-pill { background: #fff3e0; color: #e65100; font-weight: 700; padding: 2px 10px; border-radius: 12px; font-size: 13px; }
+              </style>
+            </head>
+            <body>
+              <div class="wrapper">
+                <div class="header">
+                  <h1>🔔 Deployment Approval Required</h1>
+                  <p>Hi ${{ env.LEAD_NAME }}, your approval is needed before this release goes live.</p>
+                </div>
+                <div class="section">
+                  <span class="badge">⏳ Pending Approval</span>&nbsp;&nbsp;<span class="env-pill">TEST</span>
+                  <br><br>
+                  <div class="meta-grid">
+                    <div class="meta-item"><div class="label">Environment</div><div class="value">Test</div></div>
+                    <div class="meta-item"><div class="label">Cloud Run Service</div><div class="value">medilink-app-test</div></div>
+                    <div class="meta-item"><div class="label">Requested by</div><div class="value">${{ github.actor }}</div></div>
+                    <div class="meta-item"><div class="label">Run #</div><div class="value">${{ github.run_number }}</div></div>
+                    <div class="meta-item"><div class="label">Branch</div><div class="value">${{ github.ref_name }}</div></div>
+                    <div class="meta-item"><div class="label">Commit</div><div class="value">${{ github.sha }}</div></div>
+                  </div>
+                </div>
+                <div class="section">
+                  <h2>📋 Issues Fixed / Changes in This Release</h2>
+                  <div class="changelog">
+                    <ul>
+                      ${{ needs.build.outputs.changelog }}
+                    </ul>
+                  </div>
+                </div>
+                <div class="cta">
+                  <a class="btn" href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">
+                    👉 Review &amp; Approve on GitHub
+                  </a>
+                </div>
+                <div class="footer">
+                  MediLink CI/CD · GitHub Actions · ${{ github.repository }}<br>
+                  This deployment will wait until you approve or reject in GitHub Actions.
+                </div>
+              </div>
+            </body>
+            </html>
+
+  deploy-test:
+    name: 🚀 Deploy → TEST
+    needs: [build, notify-lead-test]
+    if: ${{ github.event.inputs.environment == 'test' }}
+    runs-on: ubuntu-latest
+    environment: test           # GitHub Environment with Lead as Required Reviewer
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Deploy to Cloud Run (test) — medilink-app-test
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: medilink-app-test
+          image: ${{ needs.build.outputs.image_tag }}
+          region: ${{ env.REGION }}
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Send post-deployment confirmation to Lead
+        uses: dawidd6/action-send-mail@v2
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          from: ${{ secrets.EMAIL_USERNAME }}
+          to: ${{ env.LEAD_EMAIL }}
+          cc: ${{ env.TEAM_CC }}
+          subject: "✅ [TEST] MediLink deployed successfully — Run #${{ github.run_number }}"
+          content_type: text/html
+          body: |
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <style>
+                body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6f9; margin: 0; padding: 0; }
+                .wrapper { max-width: 640px; margin: 32px auto; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+                .header { background: linear-gradient(135deg, #2e7d32, #1b5e20); padding: 28px 32px; color: #fff; }
+                .header h1 { margin: 0; font-size: 22px; font-weight: 700; }
+                .header p  { margin: 6px 0 0; opacity: 0.85; font-size: 14px; }
+                .badge { display: inline-block; background: #e8f5e9; color: #2e7d32; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; }
+                .section { padding: 24px 32px; }
+                .section h2 { font-size: 16px; color: #1a1a2e; margin: 0 0 14px; border-bottom: 2px solid #c8e6c9; padding-bottom: 8px; }
+                .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+                .meta-item { background: #f1f8e9; border-radius: 8px; padding: 12px 14px; }
+                .meta-item .label { font-size: 11px; text-transform: uppercase; color: #558b2f; font-weight: 600; letter-spacing: 0.5px; }
+                .meta-item .value { font-size: 14px; color: #1a1a2e; margin-top: 4px; font-weight: 500; }
+                .changelog { background: #f1f8e9; border-left: 4px solid #2e7d32; border-radius: 0 8px 8px 0; padding: 14px 18px; }
+                .changelog ul { margin: 0; padding-left: 20px; }
+                .changelog li { font-size: 14px; color: #333; line-height: 1.7; }
+                .footer { background: #f4f6f9; padding: 16px 32px; text-align: center; font-size: 12px; color: #9e9e9e; }
+                .env-pill { background: #e8f5e9; color: #2e7d32; font-weight: 700; padding: 2px 10px; border-radius: 12px; font-size: 13px; }
+              </style>
+            </head>
+            <body>
+              <div class="wrapper">
+                <div class="header">
+                  <h1>✅ TEST Deployment Successful</h1>
+                  <p>Hi ${{ env.LEAD_NAME }}, the TEST environment is now live with the latest build.</p>
+                </div>
+                <div class="section">
+                  <span class="badge">✅ Deployed</span>&nbsp;&nbsp;<span class="env-pill">TEST</span>
+                  <br><br>
+                  <div class="meta-grid">
+                    <div class="meta-item"><div class="label">Environment</div><div class="value">Test</div></div>
+                    <div class="meta-item"><div class="label">Cloud Run Service</div><div class="value">medilink-app-test</div></div>
+                    <div class="meta-item"><div class="label">Approved by</div><div class="value">${{ github.actor }}</div></div>
+                    <div class="meta-item"><div class="label">Run #</div><div class="value">${{ github.run_number }}</div></div>
+                    <div class="meta-item"><div class="label">Branch</div><div class="value">${{ github.ref_name }}</div></div>
+                    <div class="meta-item"><div class="label">Commit</div><div class="value">${{ github.sha }}</div></div>
+                  </div>
+                </div>
+                <div class="section">
+                  <h2>📋 Issues Fixed / Changes Deployed</h2>
+                  <div class="changelog">
+                    <ul>
+                      ${{ needs.build.outputs.changelog }}
+                    </ul>
+                  </div>
+                </div>
+                <div class="footer">MediLink CI/CD · GitHub Actions · ${{ github.repository }}</div>
+              </div>
+            </body>
+            </html>
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB 4 — PROD: notify lead → lead gate → notify manager → manager gate → deploy
+#   Service: medilink-app-production
+# ─────────────────────────────────────────────────────────────────────────────
+  notify-lead-prod:
+    name: 📧 Notify Lead — PROD approval required
+    needs: build
+    if: ${{ github.event.inputs.environment == 'prod' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send approval request email to Lead
+        uses: dawidd6/action-send-mail@v2
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          from: ${{ secrets.EMAIL_USERNAME }}
+          to: ${{ env.LEAD_EMAIL }}
+          cc: ${{ env.TEAM_CC }}
+          subject: "🔴 [PROD] Lead Approval Required — MediLink Deploy #${{ github.run_number }}"
+          content_type: text/html
+          body: |
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <style>
+                body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6f9; margin: 0; padding: 0; }
+                .wrapper { max-width: 640px; margin: 32px auto; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+                .header { background: linear-gradient(135deg, #c62828, #b71c1c); padding: 28px 32px; color: #fff; }
+                .header h1 { margin: 0; font-size: 22px; font-weight: 700; }
+                .header p  { margin: 6px 0 0; opacity: 0.85; font-size: 14px; }
+                .badge { display: inline-block; background: #ffebee; color: #c62828; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; }
+                .section { padding: 24px 32px; }
+                .section h2 { font-size: 16px; color: #1a1a2e; margin: 0 0 14px; border-bottom: 2px solid #ffcdd2; padding-bottom: 8px; }
+                .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+                .meta-item { background: #fff5f5; border-radius: 8px; padding: 12px 14px; }
+                .meta-item .label { font-size: 11px; text-transform: uppercase; color: #e53935; font-weight: 600; letter-spacing: 0.5px; }
+                .meta-item .value { font-size: 14px; color: #1a1a2e; margin-top: 4px; font-weight: 500; }
+                .changelog { background: #fff5f5; border-left: 4px solid #c62828; border-radius: 0 8px 8px 0; padding: 14px 18px; }
+                .changelog ul { margin: 0; padding-left: 20px; }
+                .changelog li { font-size: 14px; color: #333; line-height: 1.7; }
+                .approval-chain { background: #fce4ec; border-radius: 8px; padding: 14px 18px; margin: 16px 0; }
+                .approval-chain p { margin: 0; font-size: 14px; color: #880e4f; }
+                .step { display: inline-block; background: #c62828; color: #fff; border-radius: 50%; width: 22px; height: 22px; text-align: center; line-height: 22px; font-size: 12px; font-weight: 700; margin-right: 6px; }
+                .cta { text-align: center; padding: 8px 32px 28px; }
+                .btn { display: inline-block; background: #c62828; color: #fff; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 700; font-size: 15px; }
+                .footer { background: #f4f6f9; padding: 16px 32px; text-align: center; font-size: 12px; color: #9e9e9e; }
+                .env-pill { background: #ffebee; color: #c62828; font-weight: 700; padding: 2px 10px; border-radius: 12px; font-size: 13px; }
+              </style>
+            </head>
+            <body>
+              <div class="wrapper">
+                <div class="header">
+                  <h1>🔴 Production Deployment — Lead Approval</h1>
+                  <p>Hi ${{ env.LEAD_NAME }}, a PRODUCTION deployment is awaiting your review.</p>
+                </div>
+                <div class="section">
+                  <span class="badge">⏳ Awaiting Lead</span>&nbsp;&nbsp;<span class="env-pill">PRODUCTION</span>
+                  <br><br>
+                  <div class="approval-chain">
+                    <p><span class="step">1</span> <strong>Lead approval</strong> — you are here</p>
+                    <p style="margin-top:8px"><span class="step">2</span> Manager approval — after you approve</p>
+                    <p style="margin-top:8px"><span class="step">3</span> Deployment to <strong>medilink-app-production</strong></p>
+                  </div>
+                  <div class="meta-grid">
+                    <div class="meta-item"><div class="label">Environment</div><div class="value">Production</div></div>
+                    <div class="meta-item"><div class="label">Cloud Run Service</div><div class="value">medilink-app-production</div></div>
+                    <div class="meta-item"><div class="label">Requested by</div><div class="value">${{ github.actor }}</div></div>
+                    <div class="meta-item"><div class="label">Run #</div><div class="value">${{ github.run_number }}</div></div>
+                    <div class="meta-item"><div class="label">Branch</div><div class="value">${{ github.ref_name }}</div></div>
+                    <div class="meta-item"><div class="label">Commit</div><div class="value">${{ github.sha }}</div></div>
+                  </div>
+                </div>
+                <div class="section">
+                  <h2>📋 Issues Fixed / Changes in This Release</h2>
+                  <div class="changelog">
+                    <ul>
+                      ${{ needs.build.outputs.changelog }}
+                    </ul>
+                  </div>
+                </div>
+                <div class="cta">
+                  <a class="btn" href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">
+                    👉 Review &amp; Approve on GitHub
+                  </a>
+                </div>
+                <div class="footer">MediLink CI/CD · GitHub Actions · ${{ github.repository }}</div>
+              </div>
+            </body>
+            </html>
+
+  # Gate 1 — Lead must approve before manager is notified
+  lead-approval-prod:
+    name: 🔐 Lead Approval Gate (PROD)
+    needs: [build, notify-lead-prod]
+    if: ${{ github.event.inputs.environment == 'prod' }}
+    runs-on: ubuntu-latest
+    environment: prod-lead   # GitHub Env with Lead as Required Reviewer
+
+    steps:
+      - name: Lead approved — proceeding to Manager notification
+        run: echo "Lead approved the PROD deployment. Notifying Manager."
+
+  notify-manager-prod:
+    name: 📧 Notify Manager — PROD final approval required
+    needs: [build, lead-approval-prod]       # ← only fires after lead gate passes
+    if: ${{ github.event.inputs.environment == 'prod' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send approval request email to Manager
+        uses: dawidd6/action-send-mail@v2
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          from: ${{ secrets.EMAIL_USERNAME }}
+          to: ${{ env.MANAGER_EMAIL }}
+          cc: ${{ env.LEAD_EMAIL }},${{ env.TEAM_CC }}
+          subject: "🔴 [PROD] Manager Final Approval Required — MediLink Deploy #${{ github.run_number }}"
+          content_type: text/html
+          body: |
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <style>
+                body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6f9; margin: 0; padding: 0; }
+                .wrapper { max-width: 640px; margin: 32px auto; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+                .header { background: linear-gradient(135deg, #4a148c, #311b92); padding: 28px 32px; color: #fff; }
+                .header h1 { margin: 0; font-size: 22px; font-weight: 700; }
+                .header p  { margin: 6px 0 0; opacity: 0.85; font-size: 14px; }
+                .badge { display: inline-block; background: #f3e5f5; color: #6a1b9a; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; }
+                .section { padding: 24px 32px; }
+                .section h2 { font-size: 16px; color: #1a1a2e; margin: 0 0 14px; border-bottom: 2px solid #e1bee7; padding-bottom: 8px; }
+                .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+                .meta-item { background: #faf0ff; border-radius: 8px; padding: 12px 14px; }
+                .meta-item .label { font-size: 11px; text-transform: uppercase; color: #7b1fa2; font-weight: 600; letter-spacing: 0.5px; }
+                .meta-item .value { font-size: 14px; color: #1a1a2e; margin-top: 4px; font-weight: 500; }
+                .changelog { background: #faf0ff; border-left: 4px solid #4a148c; border-radius: 0 8px 8px 0; padding: 14px 18px; }
+                .changelog ul { margin: 0; padding-left: 20px; }
+                .changelog li { font-size: 14px; color: #333; line-height: 1.7; }
+                .approval-chain { background: #ede7f6; border-radius: 8px; padding: 14px 18px; margin: 16px 0; }
+                .step-done { display: inline-block; background: #43a047; color: #fff; border-radius: 50%; width: 22px; height: 22px; text-align: center; line-height: 22px; font-size: 12px; font-weight: 700; margin-right: 6px; }
+                .step { display: inline-block; background: #4a148c; color: #fff; border-radius: 50%; width: 22px; height: 22px; text-align: center; line-height: 22px; font-size: 12px; font-weight: 700; margin-right: 6px; }
+                .cta { text-align: center; padding: 8px 32px 28px; }
+                .btn { display: inline-block; background: #4a148c; color: #fff; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 700; font-size: 15px; }
+                .footer { background: #f4f6f9; padding: 16px 32px; text-align: center; font-size: 12px; color: #9e9e9e; }
+                .env-pill { background: #ffebee; color: #c62828; font-weight: 700; padding: 2px 10px; border-radius: 12px; font-size: 13px; }
+              </style>
+            </head>
+            <body>
+              <div class="wrapper">
+                <div class="header">
+                  <h1>🔴 Production Deployment — Final Manager Approval</h1>
+                  <p>Hi ${{ env.MANAGER_NAME }}, Lead has approved. Your sign-off is the final gate.</p>
+                </div>
+                <div class="section">
+                  <span class="badge">⏳ Awaiting Manager</span>&nbsp;&nbsp;<span class="env-pill">PRODUCTION</span>
+                  <br><br>
+                  <div class="approval-chain">
+                    <p><span class="step-done">✓</span> <strong>Lead approval</strong> — completed by ${{ env.LEAD_NAME }}</p>
+                    <p style="margin-top:8px"><span class="step">2</span> <strong>Manager approval</strong> — you are here</p>
+                    <p style="margin-top:8px"><span class="step">3</span> Deployment to <strong>medilink-app-production</strong></p>
+                  </div>
+                  <div class="meta-grid">
+                    <div class="meta-item"><div class="label">Environment</div><div class="value">Production</div></div>
+                    <div class="meta-item"><div class="label">Cloud Run Service</div><div class="value">medilink-app-production</div></div>
+                    <div class="meta-item"><div class="label">Requested by</div><div class="value">${{ github.actor }}</div></div>
+                    <div class="meta-item"><div class="label">Run #</div><div class="value">${{ github.run_number }}</div></div>
+                    <div class="meta-item"><div class="label">Branch</div><div class="value">${{ github.ref_name }}</div></div>
+                    <div class="meta-item"><div class="label">Commit</div><div class="value">${{ github.sha }}</div></div>
+                  </div>
+                </div>
+                <div class="section">
+                  <h2>📋 Issues Fixed / Changes in This Release</h2>
+                  <div class="changelog">
+                    <ul>
+                      ${{ needs.build.outputs.changelog }}
+                    </ul>
+                  </div>
+                </div>
+                <div class="cta">
+                  <a class="btn" href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">
+                    👉 Final Review &amp; Approve on GitHub
+                  </a>
+                </div>
+                <div class="footer">MediLink CI/CD · GitHub Actions · ${{ github.repository }}</div>
+              </div>
+            </body>
+            </html>
+
+  # Gate 2 — Manager must approve before production deployment fires
+  deploy-prod:
+    name: 🚀 Deploy → PRODUCTION
+    needs: [build, notify-manager-prod]      # ← waits for manager notification (which itself waited for lead gate)
+    if: ${{ github.event.inputs.environment == 'prod' }}
+    runs-on: ubuntu-latest
+    environment: production                 # GitHub Env with Manager as Required Reviewer
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Deploy to Cloud Run (production) — medilink-app-production
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: medilink-app-production
+          image: ${{ needs.build.outputs.image_tag }}
+          region: ${{ env.REGION }}
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Send production deployment success notification
+        uses: dawidd6/action-send-mail@v2
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          from: ${{ secrets.EMAIL_USERNAME }}
+          to: ${{ env.MANAGER_EMAIL }}
+          cc: ${{ env.LEAD_EMAIL }},${{ env.TEAM_CC }}
+          subject: "✅ [PROD] MediLink is LIVE — Run #${{ github.run_number }}"
+          content_type: text/html
+          body: |
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <style>
+                body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6f9; margin: 0; padding: 0; }
+                .wrapper { max-width: 640px; margin: 32px auto; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+                .header { background: linear-gradient(135deg, #1b5e20, #004d40); padding: 28px 32px; color: #fff; }
+                .header h1 { margin: 0; font-size: 22px; font-weight: 700; }
+                .header p  { margin: 6px 0 0; opacity: 0.85; font-size: 14px; }
+                .badge { display: inline-block; background: #e8f5e9; color: #1b5e20; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; }
+                .section { padding: 24px 32px; }
+                .section h2 { font-size: 16px; color: #1a1a2e; margin: 0 0 14px; border-bottom: 2px solid #c8e6c9; padding-bottom: 8px; }
+                .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+                .meta-item { background: #f1f8e9; border-radius: 8px; padding: 12px 14px; }
+                .meta-item .label { font-size: 11px; text-transform: uppercase; color: #33691e; font-weight: 600; letter-spacing: 0.5px; }
+                .meta-item .value { font-size: 14px; color: #1a1a2e; margin-top: 4px; font-weight: 500; }
+                .changelog { background: #f1f8e9; border-left: 4px solid #1b5e20; border-radius: 0 8px 8px 0; padding: 14px 18px; }
+                .changelog ul { margin: 0; padding-left: 20px; }
+                .changelog li { font-size: 14px; color: #333; line-height: 1.7; }
+                .approval-chain { background: #e8f5e9; border-radius: 8px; padding: 14px 18px; margin: 16px 0; }
+                .step-done { display: inline-block; background: #43a047; color: #fff; border-radius: 50%; width: 22px; height: 22px; text-align: center; line-height: 22px; font-size: 12px; font-weight: 700; margin-right: 6px; }
+                .footer { background: #f4f6f9; padding: 16px 32px; text-align: center; font-size: 12px; color: #9e9e9e; }
+                .env-pill { background: #ffebee; color: #c62828; font-weight: 700; padding: 2px 10px; border-radius: 12px; font-size: 13px; }
+              </style>
+            </head>
+            <body>
+              <div class="wrapper">
+                <div class="header">
+                  <h1>🎉 Production Deployment Successful</h1>
+                  <p>MediLink is now live on production — all gates passed.</p>
+                </div>
+                <div class="section">
+                  <span class="badge">✅ Live in Production</span>&nbsp;&nbsp;<span class="env-pill">PRODUCTION</span>
+                  <br><br>
+                  <div class="approval-chain">
+                    <p><span class="step-done">✓</span> Lead approval — <strong>${{ env.LEAD_NAME }}</strong></p>
+                    <p style="margin-top:8px"><span class="step-done">✓</span> Manager approval — <strong>${{ env.MANAGER_NAME }}</strong></p>
+                    <p style="margin-top:8px"><span class="step-done">✓</span> Deployed to <strong>medilink-app-production</strong></p>
+                  </div>
+                  <div class="meta-grid">
+                    <div class="meta-item"><div class="label">Environment</div><div class="value">Production</div></div>
+                    <div class="meta-item"><div class="label">Cloud Run Service</div><div class="value">medilink-app-production</div></div>
+                    <div class="meta-item"><div class="label">Deployed by</div><div class="value">${{ github.actor }}</div></div>
+                    <div class="meta-item"><div class="label">Run #</div><div class="value">${{ github.run_number }}</div></div>
+                    <div class="meta-item"><div class="label">Branch</div><div class="value">${{ github.ref_name }}</div></div>
+                    <div class="meta-item"><div class="label">Commit</div><div class="value">${{ github.sha }}</div></div>
+                  </div>
+                </div>
+                <div class="section">
+                  <h2>📋 Issues Fixed / Changes Now in Production</h2>
+                  <div class="changelog">
+                    <ul>
+                      ${{ needs.build.outputs.changelog }}
+                    </ul>
+                  </div>
+                </div>
+                <div class="footer">MediLink CI/CD · GitHub Actions · ${{ github.repository }}</div>
+              </div>
+            </body>
+            </html>
