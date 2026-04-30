@@ -419,6 +419,13 @@ jobs:
 
       - name: Deploy Application to PROD
         run: |
+          echo "IMAGE VALUE: ${{ needs.build.outputs.image }}"
+
+          if [ -z "${{ needs.build.outputs.image }}" ]; then
+            echo "ERROR: Image is empty"
+            exit 1
+          fi
+
           gcloud run deploy medilink-app-production \
             --image ${{ needs.build.outputs.image }} \
             --region ${{ env.REGION }} \

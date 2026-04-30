@@ -385,6 +385,7 @@ jobs:
 # -------------------------------------------------
   success-mail:
     name: Send Deployment Success Mail
+    if: ${{ success() }}
     needs:
       - deploy
       - build
@@ -454,7 +455,7 @@ jobs:
 # -------------------------------------------------
   failure-mail:
     name: Send Deployment Failure Mail
-    if: failure()
+    if: ${{ failure() }}
     needs:
       - deploy
       - build
