@@ -17,6 +17,7 @@ on:
 env:
   BUCKET_NAME: medilink-artifacts
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
 
@@ -30,7 +31,7 @@ jobs:
       app-path: ${{ steps.detect.outputs.app-path }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Detect project type
         id: detect
@@ -58,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -115,10 +116,10 @@ jobs:
 # ---------------- .NET ----------------
       - name: Setup .NET
         if: needs.detect.outputs.app-type == 'dotnet'
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 8.0.x
-          
+
       - name: Configure Git user
         run: |
           git config user.name "github-actions"
@@ -158,12 +159,12 @@ jobs:
 # 4. AUTH TO GCP
 # ==================================================
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Setup GCloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
 # ==================================================
 # 5. UPLOAD TO GCS + RETENTION
