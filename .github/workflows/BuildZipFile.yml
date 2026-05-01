@@ -117,17 +117,17 @@ jobs:
       - name: Restore .NET
         if: needs.detect.outputs.app-type == 'dotnet'
         working-directory: ${{ needs.detect.outputs.app-path }}
-        run: dotnet restore
+        run: dotnet restore *.csproj
 
       - name: Build .NET
         if: needs.detect.outputs.app-type == 'dotnet'
         working-directory: ${{ needs.detect.outputs.app-path }}
-        run: dotnet build --configuration Release --no-restore
+        run: dotnet build *.csproj --configuration Release --no-restore
 
       - name: Publish .NET
         if: needs.detect.outputs.app-type == 'dotnet'
         working-directory: ${{ needs.detect.outputs.app-path }}
-        run: dotnet publish -c Release -o publish
+        run: dotnet publish *.csproj -c Release -o publish
 
 # ==================================================
 # 3. PACKAGE OUTPUT
