@@ -95,6 +95,11 @@ jobs:
         working-directory: ${{ needs.detect.outputs.app-path }}
         run: npm ci
 
+      - name: Configure Git user
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
       - name: Inject version (Angular)
         if: needs.detect.outputs.app-type == 'angular'
         run: |
@@ -113,6 +118,11 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+          
+      - name: Configure Git user
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
 
       - name: Restore .NET
         if: needs.detect.outputs.app-type == 'dotnet'
