@@ -1,4 +1,4 @@
-name: Polyglot CI/CD (Angular + .NET + GCS)
+name: Build the project Multi ENV CI/CD into ZIP (Angular + .NET + GCS)
 
 on:
   workflow_dispatch:
@@ -12,6 +12,8 @@ on:
           - test
           - prod
 
+        default: 'prod'
+
 env:
   BUCKET_NAME: medilink-artifacts
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -19,7 +21,7 @@ env:
 jobs:
 
 # ==================================================
-# 1. AUTO DETECT PROJECT TYPE + PATH
+# 1. DETECT PROJECT TYPE + PATH
 # ==================================================
   detect:
     runs-on: ubuntu-latest
@@ -44,12 +46,12 @@ jobs:
             echo "app-path=$APP_PATH" >> $GITHUB_OUTPUT
 
           else
-            echo "No supported project found"
+            echo "❌ No supported project found"
             exit 1
           fi
 
 # ==================================================
-# 2. BUILD JOB (ANGULAR OR DOTNET)
+# 2. BUILD + VERSIONING
 # ==================================================
   build:
     needs: detect
@@ -57,6 +59,28 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+# ---------------- VERSIONING ----------------
+      - name: Set version
+        id: version
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          RUN=${{ github.run_number }}
+
+          BASE_VERSION="1.0.0"
+
+          if [ "$ENV" = "prod" ]; then
+            VERSION="${BASE_VERSION}.${RUN}"
+          elif [ "$ENV" = "test" ]; then
+            VERSION="${BASE_VERSION}-test.${RUN}"
+          else
+            VERSION="${BASE_VERSION}-dev.${RUN}"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Build Version: $VERSION"
 
 # ---------------- ANGULAR ----------------
       - name: Setup Node
@@ -64,16 +88,24 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Install Angular deps
         if: needs.detect.outputs.app-type == 'angular'
         working-directory: ${{ needs.detect.outputs.app-path }}
         run: npm ci
 
+      - name: Inject version (Angular)
+        if: needs.detect.outputs.app-type == 'angular'
+        run: |
+          echo "export const BUILD_VERSION = '$VERSION';" > ${{ needs.detect.outputs.app-path }}/src/environments/version.ts
+
       - name: Build Angular
         if: needs.detect.outputs.app-type == 'angular'
         working-directory: ${{ needs.detect.outputs.app-path }}
-        run: npm run build -- --configuration=development
+        run: npm run build -- --configuration=${{ github.event.inputs.environment }}
+        env:
+          NODE_OPTIONS: --max_old_space_size=6144
 
 # ---------------- .NET ----------------
       - name: Setup .NET
@@ -85,12 +117,17 @@ jobs:
       - name: Restore .NET
         if: needs.detect.outputs.app-type == 'dotnet'
         working-directory: ${{ needs.detect.outputs.app-path }}
-        run: dotnet restore *.csproj
+        run: dotnet restore
 
       - name: Build .NET
         if: needs.detect.outputs.app-type == 'dotnet'
         working-directory: ${{ needs.detect.outputs.app-path }}
-        run: dotnet build *.csproj --configuration Release --no-restore
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Publish .NET
+        if: needs.detect.outputs.app-type == 'dotnet'
+        working-directory: ${{ needs.detect.outputs.app-path }}
+        run: dotnet publish -c Release -o publish
 
 # ==================================================
 # 3. PACKAGE OUTPUT
@@ -102,10 +139,10 @@ jobs:
           if [ "${{ needs.detect.outputs.app-type }}" = "angular" ]; then
             cp -r ${{ needs.detect.outputs.app-path }}/dist/* release/
           else
-            cp -r ${{ needs.detect.outputs.app-path }}/bin release/
+            cp -r ${{ needs.detect.outputs.app-path }}/publish/* release/
           fi
 
-          zip -r build.zip release
+          zip -r build_${{ steps.version.outputs.version }}.zip release
 
 # ==================================================
 # 4. AUTH TO GCP
@@ -119,44 +156,36 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
 # ==================================================
-# 5. UPLOAD TO GCS (ENVIRONMENT NAMED ZIP + RETENTION)
+# 5. UPLOAD TO GCS + RETENTION
 # ==================================================
       - name: Upload to GCS
         run: |
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
           ENV=${{ github.event.inputs.environment }}
 
-          ZIP_NAME="build_${ENV}_${TIMESTAMP}.zip"
+          ZIP_NAME="build_${ENV}_${TIMESTAMP}_v${{ steps.version.outputs.version }}.zip"
           GCS_PATH="gs://$BUCKET_NAME/$ENV"
 
           echo "Uploading: $ZIP_NAME"
 
-          # Upload new build
-          gsutil cp build.zip $GCS_PATH/$ZIP_NAME
+          gsutil cp build_${{ steps.version.outputs.version }}.zip $GCS_PATH/$ZIP_NAME
 
           echo "Uploaded to $GCS_PATH/$ZIP_NAME"
 
           ##################################################
-          # RETENTION POLICY - KEEP ONLY LAST 5 BUILDS
+          # RETENTION POLICY - KEEP LAST 5 BUILDS
           ##################################################
-          echo "Applying retention policy (keep last 5 builds)..."
-
           FILES=$(gsutil ls $GCS_PATH/ 2>/dev/null | sort)
-
           COUNT=$(echo "$FILES" | wc -l | tr -d ' ')
 
-          echo "Total files in $ENV: $COUNT"
-
           if [ "$COUNT" -gt 5 ]; then
-              DELETE_COUNT=$((COUNT - 5))
+            DELETE_COUNT=$((COUNT - 5))
 
-              echo "Deleting $DELETE_COUNT old builds..."
-
-              echo "$FILES" | head -n $DELETE_COUNT | while read file
-              do
-                echo "Deleting: $file"
-                gsutil rm "$file"
-              done
+            echo "$FILES" | head -n $DELETE_COUNT | while read file
+            do
+              echo "Deleting: $file"
+              gsutil rm "$file"
+            done
           else
-              echo "Retention OK - no cleanup needed"
+            echo "Retention OK"
           fi
